@@ -6,5 +6,8 @@ py -m pip install --upgrade -r requirements.txt pyinstaller || exit /b 1
 py -m PyInstaller --noconfirm --clean --windowed --name FlasH ^
   --exclude-module numpy --exclude-module PIL --exclude-module matplotlib ^
   run_flash.py || exit /b 1
+copy /y "packaging\*.txt" "dist\FlasH\" >nul
+powershell -NoProfile -Command "Compress-Archive -Path 'dist\FlasH' -DestinationPath 'dist\FlasH-Windows.zip' -Force" || exit /b 1
 echo.
 echo Done: dist\FlasH\FlasH.exe
+echo Archive for sharing: dist\FlasH-Windows.zip
