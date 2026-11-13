@@ -38,6 +38,7 @@ def _write_json(path: str, data) -> None:
 
 DEFAULT_SETTINGS = {
     "lang": "uk",
+    "theme": "system",
     "font_size": 12,
     "shuffle_options": True,
     "instant_feedback": True,

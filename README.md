@@ -11,6 +11,7 @@ FlasH — настільна програма для Windows, яка робит�
 - **Режими тесту**: «розумний» (спочатку слабкі й нові питання), випадковий, по порядку, лише помилки, лише нові. Можна вибрати кількість питань і діапазон (наприклад, № 100–200).
 - **Прогрес**: для кожного питання зберігається, скільки разів ви відповіли правильно чи неправильно. Після тесту можна переглянути помилки й пройти їх ще раз.
 - **Мови інтерфейсу**: українська та англійська.
+- **Світла й темна тема**, а також режим «як у системі». Перемикач є в шапці програми, у темній темі заголовок вікна Windows теж темний.
 - **Легка**: Tkinter + PyMuPDF, імпорт 80-сторінкового PDF триває менше секунди, програма займає близько 60 МБ оперативної пам'яті. Працює на слабких ноутбуках.
 - **Керування з клавіатури**: `1`–`5` вибирають відповідь, `Enter` переходить до наступного питання.
 
@@ -51,6 +52,7 @@ FlasH is a Windows desktop app that turns study documents into practice tests.
 - **Test modes**: smart (weak and new questions first), random, in order, mistakes only, new only. You can set the number of questions and a question range.
 - **Progress**: right and wrong answers are tracked for each question. After a test you can review your mistakes and retry them.
 - **UI languages**: Ukrainian and English.
+- **Light and dark themes**, plus a mode that follows the Windows setting. The switch is in the header.
 - **Lightweight**: Tkinter + PyMuPDF. An 80-page PDF imports in under a second, and the app uses about 60 MB of RAM.
 
 Run from source with `py -m pip install -r requirements.txt` and `py run_flash.py`. Build the exe with `build.bat`.
@@ -66,6 +68,7 @@ flash/
   importer.py   file -> questions pipeline
   quiz.py       question selection + test session logic
   storage.py    JSON storage in %APPDATA%\FlasH
+  theme.py      light/dark palettes and ttk styling
   i18n.py       UA/EN strings
   ui.py         Tkinter interface
 tests/          unit tests: py -m unittest discover -s tests -t .

@@ -1,7 +1,8 @@
 """Tkinter user interface.
 
 Tkinter ships with Python, starts fast and needs very little memory, so FlasH
-runs on old and low-end Windows laptops.
+runs on old and low-end Windows laptops. Colours come from ``theme.P`` and every
+view is rebuilt when the theme changes.
 """
 from __future__ import annotations
 
@@ -11,31 +12,18 @@ import random
 import threading
 import tkinter as tk
 import tkinter.font as tkfont
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, ttk
 
-from . import ai, generator
+from . import ai, generator, theme
 from .extract import SUPPORTED_EXTENSIONS, ExtractionError
 from .i18n import LANGUAGES, set_language, t
 from .importer import analyse_file
 from .quiz import MODES, Session, select_questions
 from .storage import Store
+from .theme import P
 
 APP_NAME = "FlasH"
-
-C = {
-    "bg": "#f5f6fa",
-    "card": "#ffffff",
-    "text": "#1f2330",
-    "muted": "#6b7280",
-    "accent": "#2563eb",
-    "accent_dark": "#1d4ed8",
-    "border": "#d6d9e0",
-    "hover": "#eef2ff",
-    "ok_bg": "#d1fadf",
-    "ok_fg": "#05603a",
-    "bad_bg": "#fee4e2",
-    "bad_fg": "#912018",
-}
+PAD = 20
 
 
 def _enable_dpi_awareness() -> None:
@@ -47,6 +35,134 @@ def _enable_dpi_awareness() -> None:
         pass
 
 
+# ------------------------------------------------------------------ helpers
+def card(parent, **kw) -> tk.Frame:
+    return tk.Frame(parent, bg=P.surface, highlightthickness=1, highlightbackground=P.border,
+                    highlightcolor=P.border, **kw)
+
+
+def label(parent, text="", font=None, fg=None, bg=None, **kw) -> tk.Label:
+    return tk.Label(parent, text=text, font=font, fg=fg or P.text, bg=bg or parent.cget("bg"),
+                    justify=kw.pop("justify", "left"), anchor=kw.pop("anchor", "w"), **kw)
+
+
+def badge(parent, text, fg=None, bg=None, font=None) -> tk.Label:
+    return tk.Label(parent, text=text, fg=fg or P.accent, bg=bg or P.accent_soft, font=font, padx=8, pady=1)
+
+
+def style_text(widget: tk.Text, font) -> None:
+    widget.configure(bg=P.surface, fg=P.text, insertbackground=P.text, selectbackground=P.selection,
+                     selectforeground=P.text, font=font, bd=0, highlightthickness=0, padx=18, pady=14)
+
+
+class Bar(tk.Frame):
+    """Thin flat progress bar (ttk's clam bar ignores thickness)."""
+
+    def __init__(self, master, value: float = 0.0, color=None, height: int = 6):
+        super().__init__(master, bg=P.track, height=height)
+        self.fill = tk.Frame(self, bg=color or P.accent, height=height)
+        self.set(value)
+
+    def set(self, value: float, color=None):
+        if color:
+            self.fill.configure(bg=color)
+        value = min(max(value, 0.0), 1.0)
+        if value <= 0:
+            self.fill.place_forget()
+        else:
+            self.fill.place(x=0, y=0, relheight=1, relwidth=value)
+
+
+class Toggle(tk.Frame):
+    """Radio button or checkbox drawn on a canvas, so it looks right in both themes."""
+
+    def __init__(self, master, text, variable, value=None, font=None):
+        bg = master.cget("bg")
+        super().__init__(master, bg=bg, cursor="hand2")
+        self.var, self.value = variable, value
+        self.radio = value is not None
+        self.icon = tk.Canvas(self, width=20, height=20, bg=bg, highlightthickness=0)
+        self.icon.pack(side="left", padx=(0, 10))
+        self.lbl = tk.Label(self, text=text, bg=bg, fg=P.text, font=font, anchor="w")
+        self.lbl.pack(side="left", fill="x")
+        for w in (self, self.icon, self.lbl):
+            w.bind("<Button-1>", self._click)
+            w.bind("<Enter>", lambda e: self._draw(hover=True))
+            w.bind("<Leave>", lambda e: self._draw())
+        self._trace = variable.trace_add("write", lambda *a: self._draw())
+        self._draw()
+
+    def destroy(self):
+        try:
+            self.var.trace_remove("write", self._trace)
+        except tk.TclError:
+            pass
+        super().destroy()
+
+    def _selected(self) -> bool:
+        return self.var.get() == self.value if self.radio else bool(self.var.get())
+
+    def _click(self, event=None):
+        if self.radio:
+            self.var.set(self.value)
+        else:
+            self.var.set(not self.var.get())
+
+    def _draw(self, hover=False):
+        if not self.icon.winfo_exists():
+            return
+        c, on = self.icon, self._selected()
+        c.delete("all")
+        border = P.accent if (on or hover) else P.muted
+        if self.radio:
+            c.create_oval(2, 2, 18, 18, outline=border, width=2, fill=P.surface)
+            if on:
+                c.create_oval(6, 6, 14, 14, outline=P.accent, fill=P.accent)
+        else:
+            c.create_rectangle(2, 2, 18, 18, outline=P.accent if on else border, width=2,
+                               fill=P.accent if on else P.surface)
+            if on:
+                c.create_line(5, 10, 9, 14, 15, 6, fill=P.accent_text, width=2.5, capstyle="round")
+
+
+class ScrollFrame(tk.Frame):
+    """Vertically scrollable container; put children into ``.inner``."""
+
+    def __init__(self, master, bg):
+        super().__init__(master, bg=bg)
+        self.canvas = tk.Canvas(self, bg=bg, highlightthickness=0, bd=0)
+        self.canvas._flash_scroll = True
+        self.sb = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.inner = tk.Frame(self.canvas, bg=bg)
+        self._win = self.canvas.create_window(0, 0, window=self.inner, anchor="nw")
+        self.canvas.configure(yscrollcommand=self._on_scroll)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.inner.bind("<Configure>", lambda e: self._update_region())
+        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self._win, width=e.width))
+
+    def _update_region(self):
+        self.canvas.configure(scrollregion=(0, 0, self.inner.winfo_width(), self.inner.winfo_reqheight()))
+
+    def show_widget(self, widget):
+        """Scroll just enough to make ``widget`` fully visible."""
+        self.update_idletasks()
+        self._update_region()
+        total = max(self.inner.winfo_reqheight(), 1)
+        view = self.canvas.winfo_height()
+        bottom = widget.winfo_rooty() - self.inner.winfo_rooty() + widget.winfo_height()
+        if bottom > view and total > view:
+            self.canvas.yview_moveto(min((bottom - view + 12) / total, 1.0))
+
+    def _on_scroll(self, first, last):
+        # Show the scrollbar only when the content does not fit.
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            self.sb.pack_forget()
+        elif not self.sb.winfo_ismapped():
+            self.sb.pack(side="right", fill="y")
+        self.sb.set(first, last)
+
+
+# ====================================================================
 class App(tk.Tk):
     def __init__(self, store: Store | None = None):
         _enable_dpi_awareness()
@@ -54,58 +170,42 @@ class App(tk.Tk):
         self.store = store or Store()
         set_language(self.store.settings["lang"])
         self.title(APP_NAME)
-        self.geometry("980x680")
-        self.minsize(640, 480)
-        self.configure(bg=C["bg"])
+        self.geometry("1000x720")
+        self.minsize(680, 520)
         self._init_fonts()
-        self._init_style()
+        theme.apply(self, self.store.settings.get("theme", "system"), self.fonts)
         self._set_icon()
 
-        self.header = tk.Frame(self, bg=C["card"], highlightthickness=1, highlightbackground=C["border"])
+        self.header = tk.Frame(self)
         self.header.pack(fill="x")
-        self.body = tk.Frame(self, bg=C["bg"])
+        self.body = tk.Frame(self)
         self.body.pack(fill="both", expand=True)
         self.view: tk.Widget | None = None
+        self._factory = None
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.bind_all("<MouseWheel>", self._on_wheel)
         self._build_header()
         self.show_library()
 
     # ----------------------------------------------------------- setup
     def _init_fonts(self):
         size = int(self.store.settings.get("font_size", 12))
-        family = "Segoe UI" if "Segoe UI" in tkfont.families() else "TkDefaultFont"
-        self.fonts = {
-            "base": tkfont.Font(family=family, size=size),
-            "small": tkfont.Font(family=family, size=max(size - 2, 8)),
-            "bold": tkfont.Font(family=family, size=size, weight="bold"),
-            "question": tkfont.Font(family=family, size=size + 3, weight="bold"),
-            "title": tkfont.Font(family=family, size=size + 8, weight="bold"),
-            "huge": tkfont.Font(family=family, size=size + 22, weight="bold"),
-        }
+        families = tkfont.families()
+        family = next((f for f in ("Segoe UI Variable Text", "Segoe UI") if f in families), "TkDefaultFont")
+        self.fonts = {name: tkfont.Font(family=family) for name in self._FONT_SPEC}
+        self.apply_font_size(size, restyle=False)
         self.option_add("*Font", self.fonts["base"])
 
-    def apply_font_size(self, size: int):
-        deltas = {"base": 0, "small": -2, "bold": 0, "question": 3, "title": 8, "huge": 22}
-        for name, d in deltas.items():
-            self.fonts[name].configure(size=max(size + d, 8))
-        self._init_style()
+    _FONT_SPEC = {
+        "small": (-2, "normal"), "base": (0, "normal"), "bold": (0, "bold"), "h2": (3, "bold"),
+        "question": (3, "bold"), "title": (8, "bold"), "huge": (16, "bold"), "icon": (26, "normal"),
+    }
 
-    def _init_style(self):
-        style = ttk.Style(self)
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
-        elif "clam" in style.theme_names():
-            style.theme_use("clam")
-        row_h = int(self.fonts["base"].metrics("linespace") * 1.6)
-        style.configure("Treeview", rowheight=row_h, font=self.fonts["base"])
-        style.configure("Treeview.Heading", font=self.fonts["bold"])
-        style.configure("TButton", font=self.fonts["base"], padding=(10, 4))
-        style.configure("Accent.TButton", font=self.fonts["bold"], padding=(14, 6))
-        style.configure("TCheckbutton", font=self.fonts["base"], background=C["card"])
-        style.configure("TRadiobutton", font=self.fonts["base"], background=C["card"])
-        style.configure("TLabel", font=self.fonts["base"])
-        style.configure("Card.TFrame", background=C["card"])
-        style.configure("Horizontal.TProgressbar", thickness=8)
+    def apply_font_size(self, size: int, restyle: bool = True):
+        for name, (delta, weight) in self._FONT_SPEC.items():
+            self.fonts[name].configure(size=max(size + delta, 8), weight=weight)
+        if restyle:
+            self.refresh_theme()
 
     def _set_icon(self):
         here = os.path.dirname(os.path.abspath(__file__))
@@ -116,52 +216,88 @@ class App(tk.Tk):
             except tk.TclError:
                 pass
 
-    def _build_header(self):
-        for w in self.header.winfo_children():
-            w.destroy()
-        logo = tk.Label(self.header, text="⚡ FlasH", font=self.fonts["title"], fg=C["accent"], bg=C["card"])
-        logo.pack(side="left", padx=(16, 8), pady=8)
-        tk.Label(self.header, text=t("app_tagline"), font=self.fonts["small"], fg=C["muted"], bg=C["card"]).pack(
-            side="left", pady=8
-        )
-        ttk.Button(self.header, text=t("settings"), command=self.open_settings).pack(side="right", padx=12)
-        lang = ttk.Combobox(self.header, values=list(LANGUAGES.values()), state="readonly", width=11)
-        lang.set(LANGUAGES[self.store.settings["lang"]])
-        lang.pack(side="right")
-        lang.bind("<<ComboboxSelected>>", lambda e: self.change_language(
-            [k for k, v in LANGUAGES.items() if v == lang.get()][0]))
+    def _on_wheel(self, event):
+        w = self.winfo_containing(event.x_root, event.y_root)
+        while w is not None:
+            if getattr(w, "_flash_scroll", False):
+                w.yview_scroll(int(-event.delta / 120), "units")
+                return
+            if isinstance(w, (tk.Text, tk.Listbox)):
+                return  # these scroll on their own
+            w = w.master
+
+    # ----------------------------------------------------------- theme / language
+    def refresh_theme(self):
+        theme.apply(self, self.store.settings.get("theme", "system"), self.fonts)
+        self._build_header()
+        self._rebuild()
+
+    def set_theme(self, mode: str):
+        self.store.settings["theme"] = mode
+        self.store.save_settings()
+        self.refresh_theme()
+
+    def toggle_theme(self):
+        self.set_theme("light" if P.name == "dark" else "dark")
 
     def change_language(self, code: str):
         self.store.settings["lang"] = code
         self.store.save_settings()
         set_language(code)
         self._build_header()
-        if isinstance(self.view, QuizView):
-            self.view.refresh_texts()
-        else:
-            self.show_library()
+        self._rebuild()
+
+    def _build_header(self):
+        for w in self.header.winfo_children():
+            w.destroy()
+        self.header.configure(bg=P.surface, highlightthickness=1, highlightbackground=P.border)
+        self.body.configure(bg=P.bg)
+        inner = tk.Frame(self.header, bg=P.surface)
+        inner.pack(fill="x", padx=PAD, pady=10)
+        logo = tk.Frame(inner, bg=P.surface, cursor="hand2")
+        logo.pack(side="left")
+        tk.Label(logo, text="⚡", font=self.fonts["title"], fg=P.accent, bg=P.surface).pack(side="left")
+        tk.Label(logo, text="FlasH", font=self.fonts["title"], fg=P.text, bg=P.surface).pack(side="left")
+        for w in (logo, *logo.winfo_children()):
+            w.bind("<Button-1>", lambda e: self.show_library())
+        label(inner, t("app_tagline"), font=self.fonts["small"], fg=P.muted).pack(side="left", padx=(12, 0), pady=(6, 0))
+
+        ttk.Button(inner, text="⚙  " + t("settings"), style="CardGhost.TButton",
+                   command=self.open_settings).pack(side="right")
+        icon = "☼" if P.name == "dark" else "☾"
+        ttk.Button(inner, text=f"{icon}  " + (t("theme_light") if P.name == "dark" else t("theme_dark")),
+                   style="CardGhost.TButton", command=self.toggle_theme).pack(side="right", padx=4)
+        lang = ttk.Combobox(inner, values=list(LANGUAGES.values()), state="readonly", width=11)
+        lang.set(LANGUAGES[self.store.settings["lang"]])
+        lang.pack(side="right", padx=8)
+        lang.bind("<<ComboboxSelected>>", lambda e: self.change_language(
+            next(k for k, v in LANGUAGES.items() if v == lang.get())))
 
     # ----------------------------------------------------------- views
     def on_close(self):
         self.store.save_progress()
         self.destroy()
 
-    def _show(self, view: tk.Widget):
+    def _show(self, factory):
         self.store.save_progress()
         if self.view is not None:
             self.view.destroy()
-        self.view = view
-        view.pack(fill="both", expand=True)
+        self._factory = factory
+        self.view = factory()
+        self.view.pack(fill="both", expand=True)
+
+    def _rebuild(self):
+        if self._factory:
+            self._show(self._factory)
 
     def show_library(self):
-        self._show(LibraryView(self.body, self))
+        self._show(lambda: LibraryView(self.body, self))
 
     def start_session(self, session: Session, instant_feedback: bool):
-        self._show(QuizView(self.body, self, session, instant_feedback))
+        self._show(lambda: QuizView(self.body, self, session, instant_feedback))
 
     def show_results(self, session: Session):
-        self.store.save_progress()
-        self._show(ResultsView(self.body, self, session))
+        self._show(lambda: ResultsView(self.body, self, session))
 
     # ----------------------------------------------------------- dialogs
     def open_settings(self):
@@ -200,7 +336,7 @@ class App(tk.Tk):
         choice = GenerateChoiceDialog(self).result
         if choice == "offline":
             self.run_task(
-                t("importing"),
+                t("generating"),
                 lambda p, c: generator.generate_questions(result.lines),
                 lambda qs, err: self._finish_generated(result, "generated", qs, err),
             )
@@ -226,7 +362,7 @@ class App(tk.Tk):
             )
 
         self.run_task(
-            t("importing"), work,
+            t("generating"), work,
             lambda qs, err: self._finish_generated(result, "ai", qs, err),
             cancellable=True,
         )
@@ -238,9 +374,6 @@ class App(tk.Tk):
             else:
                 msg = str(error)
             messagebox.showerror(APP_NAME, msg, parent=self)
-            return
-        if not questions:
-            messagebox.showwarning(APP_NAME, t("no_questions"), parent=self)
             return
         self._save_deck(result.name, result.source, kind, questions)
 
@@ -256,67 +389,96 @@ class App(tk.Tk):
 # ====================================================================
 class LibraryView(tk.Frame):
     def __init__(self, master, app: App):
-        super().__init__(master, bg=C["bg"])
+        super().__init__(master, bg=P.bg)
         self.app = app
-        self.decks = {d.id: d for d in app.store.list_decks()}
+        f = app.fonts
+        decks = app.store.list_decks()
 
-        top = tk.Frame(self, bg=C["bg"])
-        top.pack(fill="x", padx=16, pady=(14, 6))
-        tk.Label(top, text=t("decks"), font=self.app.fonts["title"], bg=C["bg"], fg=C["text"]).pack(side="left")
-        ttk.Button(top, text="＋ " + t("import"), style="Accent.TButton", command=app.import_file).pack(side="right")
+        top = tk.Frame(self, bg=P.bg)
+        top.pack(fill="x", padx=PAD, pady=(PAD, 8))
+        titles = tk.Frame(top, bg=P.bg)
+        titles.pack(side="left")
+        label(titles, t("decks"), font=f["title"]).pack(anchor="w")
+        if decks:
+            label(titles, t("decks_count", n=len(decks)), font=f["small"], fg=P.muted).pack(anchor="w")
+        ttk.Button(top, text="＋  " + t("import"), style="Accent.TButton", command=app.import_file).pack(
+            side="right", anchor="s")
 
-        card = tk.Frame(self, bg=C["card"], highlightthickness=1, highlightbackground=C["border"])
-        card.pack(fill="both", expand=True, padx=16, pady=6)
-
-        if not self.decks:
-            tk.Label(
-                card, text=t("empty_library"), bg=C["card"], fg=C["muted"], wraplength=520, justify="center",
-            ).pack(expand=True, padx=24, pady=40)
+        if not decks:
+            self._empty_state()
             return
 
-        cols = ("questions", "learned", "weak", "kind")
-        self.tree = ttk.Treeview(card, columns=cols, show="tree headings", selectmode="browse")
-        self.tree.heading("#0", text=t("col_name"))
-        self.tree.column("#0", width=360, stretch=True)
-        for col, key, w in (("questions", "col_questions", 90), ("learned", "col_learned", 110),
-                            ("weak", "col_weak", 90), ("kind", "col_kind", 150)):
-            self.tree.heading(col, text=t(key))
-            self.tree.column(col, width=w, anchor="center", stretch=False)
-        sb = ttk.Scrollbar(card, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=sb.set)
-        self.tree.pack(side="left", fill="both", expand=True)
-        sb.pack(side="right", fill="y")
+        scroll = ScrollFrame(self, P.bg)
+        scroll.pack(fill="both", expand=True, padx=(PAD, 6), pady=(4, PAD))
+        for deck in decks:
+            DeckCard(scroll.inner, app, deck).pack(fill="x", pady=6, padx=(0, 14))
 
-        for d in self.decks.values():
-            s = app.store.summary(d)
-            pct = round(100 * s["learned"] / s["total"]) if s["total"] else 0
-            self.tree.insert("", "end", iid=d.id, text=d.name, values=(
-                s["total"], f"{s['learned']} ({pct}%)", s["weak"], t(f"kind_{d.kind}")))
-        first = next(iter(self.decks))
-        self.tree.selection_set(first)
-        self.tree.focus(first)
-        self.tree.bind("<Double-1>", lambda e: self.start())
-        self.tree.bind("<Return>", lambda e: self.start())
+    def _empty_state(self):
+        f = self.app.fonts
+        box = card(self)
+        box.pack(fill="both", expand=True, padx=PAD, pady=(8, PAD))
+        center = tk.Frame(box, bg=P.surface)
+        center.place(relx=0.5, rely=0.45, anchor="center")
+        tk.Label(center, text="📚", font=f["icon"], bg=P.surface, fg=P.accent).pack()
+        label(center, t("empty_title"), font=f["h2"], anchor="center", justify="center").pack(pady=(8, 4))
+        label(center, t("empty_library"), fg=P.muted, wraplength=460, anchor="center",
+              justify="center").pack()
+        ttk.Button(center, text="＋  " + t("import"), style="Accent.TButton",
+                   command=self.app.import_file).pack(pady=(18, 0))
 
-        bar = tk.Frame(self, bg=C["bg"])
-        bar.pack(fill="x", padx=16, pady=(6, 14))
-        ttk.Button(bar, text="▶ " + t("start"), style="Accent.TButton", command=self.start).pack(side="left")
-        ttk.Button(bar, text=t("browse"), command=self.browse).pack(side="left", padx=(8, 0))
-        ttk.Button(bar, text=t("delete"), command=self.delete).pack(side="right")
-        ttk.Button(bar, text=t("reset"), command=self.reset).pack(side="right", padx=8)
-        ttk.Button(bar, text=t("rename"), command=self.rename).pack(side="right")
 
-    def selected(self):
-        sel = self.tree.selection() if hasattr(self, "tree") else ()
-        if not sel:
-            messagebox.showinfo(APP_NAME, t("choose_deck"), parent=self)
-            return None
-        return self.decks[sel[0]]
+class DeckCard(tk.Frame):
+    def __init__(self, master, app: App, deck):
+        super().__init__(master, bg=P.surface, highlightthickness=1, highlightbackground=P.border,
+                         highlightcolor=P.border)
+        self.app = app
+        self.deck = deck
+        f = app.fonts
+        s = app.store.summary(deck)
+        pct = round(100 * s["learned"] / s["total"]) if s["total"] else 0
+
+        body = tk.Frame(self, bg=P.surface)
+        body.pack(side="left", fill="both", expand=True, padx=18, pady=14)
+        row = tk.Frame(body, bg=P.surface)
+        row.pack(fill="x")
+        label(row, deck.name, font=f["h2"]).pack(side="left")
+        badge(row, t(f"kind_{deck.kind}"), font=f["small"]).pack(side="left", padx=10)
+
+        stats = t("stats_line", total=s["total"], seen=s["seen"], learned=s["learned"])
+        if s["weak"]:
+            stats += "  ·  " + t("stats_weak", n=s["weak"])
+        label(body, stats, font=f["small"], fg=P.muted).pack(fill="x", pady=(4, 8))
+
+        prog = tk.Frame(body, bg=P.surface)
+        prog.pack(fill="x")
+        Bar(prog, pct / 100, color=P.ok if pct >= 80 else P.accent).pack(side="left", fill="x", expand=True)
+        label(prog, t("learned_pct", pct=pct), font=f["small"], fg=P.muted).pack(side="left", padx=(10, 0))
+
+        actions = tk.Frame(self, bg=P.surface)
+        actions.pack(side="right", padx=(0, 16))
+        ttk.Button(actions, text="▶  " + t("start"), style="Accent.TButton", command=self.start).pack(side="left")
+        more = ttk.Button(actions, text="•••", style="CardGhost.TButton", width=0, command=lambda: self.menu(more))
+        more.pack(side="left", padx=(6, 0))
+
+        hover_targets = [self, body, row, prog, actions] + list(body.winfo_children()) + list(row.winfo_children())
+        for w in hover_targets:
+            w.bind("<Enter>", lambda e: self.configure(highlightbackground=P.accent), add="+")
+            w.bind("<Leave>", lambda e: self.configure(highlightbackground=P.border), add="+")
+            if not isinstance(w, ttk.Widget):
+                w.bind("<Double-Button-1>", lambda e: self.start())
+
+    def menu(self, anchor):
+        m = tk.Menu(self, tearoff=0, bg=P.surface, fg=P.text, activebackground=P.selection,
+                    activeforeground=P.text, bd=0, font=self.app.fonts["base"])
+        m.add_command(label="🔍  " + t("browse"), command=lambda: BrowseWindow(self.app, self.deck))
+        m.add_command(label="✎  " + t("rename"), command=self.rename)
+        m.add_command(label="↺  " + t("reset"), command=self.reset)
+        m.add_separator()
+        m.add_command(label="🗑  " + t("delete"), command=self.delete, foreground=P.bad)
+        m.tk_popup(anchor.winfo_rootx(), anchor.winfo_rooty() + anchor.winfo_height())
 
     def start(self):
-        deck = self.selected()
-        if not deck:
-            return
+        deck = self.deck
         params = SetupDialog(self.app, deck).result
         if not params:
             return
@@ -326,192 +488,215 @@ class LibraryView(tk.Frame):
             start=params["start"], end=params["end"],
         )
         if not questions:
-            messagebox.showinfo(APP_NAME, t("nothing_selected"), parent=self)
+            messagebox.showinfo(APP_NAME, t("nothing_selected"), parent=self.app)
             return
         session = Session.create(deck.id, questions, shuffle_options=params["shuffle"])
         self.app.start_session(session, params["feedback"])
 
-    def browse(self):
-        deck = self.selected()
-        if deck:
-            BrowseWindow(self.app, deck)
-
     def rename(self):
-        deck = self.selected()
-        if not deck:
-            return
-        name = simpledialog.askstring(APP_NAME, t("new_name"), initialvalue=deck.name, parent=self)
-        if name and name.strip():
-            deck.name = name.strip()
-            self.app.store.save_deck(deck)
+        name = RenameDialog(self.app, self.deck.name).result
+        if name:
+            self.deck.name = name
+            self.app.store.save_deck(self.deck)
             self.app.show_library()
 
     def reset(self):
-        deck = self.selected()
-        if deck and messagebox.askyesno(APP_NAME, t("confirm_reset", name=deck.name), parent=self):
-            self.app.store.reset_progress(deck.id)
+        if messagebox.askyesno(APP_NAME, t("confirm_reset", name=self.deck.name), parent=self.app):
+            self.app.store.reset_progress(self.deck.id)
             self.app.show_library()
 
     def delete(self):
-        deck = self.selected()
-        if deck and messagebox.askyesno(APP_NAME, t("confirm_delete", name=deck.name), parent=self):
-            self.app.store.delete_deck(deck.id)
+        if messagebox.askyesno(APP_NAME, t("confirm_delete", name=self.deck.name), parent=self.app):
+            self.app.store.delete_deck(self.deck.id)
             self.app.show_library()
 
 
 # ====================================================================
+class OptionRow(tk.Frame):
+    """A clickable answer option: number badge + wrapped text."""
+
+    def __init__(self, master, app: App, number: int, text: str, on_click):
+        super().__init__(master, bg=P.surface, highlightthickness=1, highlightbackground=P.border,
+                         highlightcolor=P.border, cursor="hand2")
+        self.enabled = True
+        self.badge = tk.Label(self, text=str(number), width=3, font=app.fonts["bold"], pady=2)
+        self.badge.pack(side="left", padx=(10, 0), pady=7, anchor="n")
+        self.text = tk.Label(self, text=text, justify="left", anchor="w", font=app.fonts["base"])
+        self.text.pack(side="left", fill="x", expand=True, padx=12, pady=7)
+        self.set_state("normal")
+        for w in (self, self.badge, self.text):
+            w.bind("<Button-1>", lambda e: self.enabled and on_click())
+            w.bind("<Enter>", lambda e: self.enabled and self.set_state("hover"))
+            w.bind("<Leave>", lambda e: self.enabled and self.set_state("normal"))
+
+    def set_state(self, state: str):
+        bg, border, badge_bg, badge_fg, fg = {
+            "normal": (P.surface, P.border, P.surface2, P.muted, P.text),
+            "hover": (P.hover, P.accent, P.accent_soft, P.accent, P.text),
+            "correct": (P.ok_bg, P.ok, P.ok, P.on_ok, P.text),
+            "wrong": (P.bad_bg, P.bad, P.bad, P.on_bad, P.text),
+            "dim": (P.surface, P.border, P.surface2, P.muted, P.muted),
+        }[state]
+        self.configure(bg=bg, highlightbackground=border, highlightcolor=border)
+        self.badge.configure(bg=badge_bg, fg=badge_fg)
+        self.text.configure(bg=bg, fg=fg)
+
+    def disable(self):
+        self.enabled = False
+        for w in (self, self.badge, self.text):
+            w.configure(cursor="arrow")
+
+
 class QuizView(tk.Frame):
     def __init__(self, master, app: App, session: Session, instant_feedback: bool):
-        super().__init__(master, bg=C["bg"])
+        super().__init__(master, bg=P.bg)
         self.app = app
         self.session = session
         self.instant = instant_feedback
-        self.buttons: list[tk.Button] = []
-        self.answered = False
+        self.rows: list[OptionRow] = []
+        f = app.fonts
 
-        top = tk.Frame(self, bg=C["bg"])
-        top.pack(fill="x", padx=20, pady=(14, 4))
-        self.counter = tk.Label(top, bg=C["bg"], fg=C["muted"], font=self.app.fonts["bold"])
-        self.counter.pack(side="left")
-        self.score_lbl = tk.Label(top, bg=C["bg"], fg=C["muted"])
-        self.score_lbl.pack(side="right")
-        self.progress = ttk.Progressbar(self, maximum=len(session.items))
-        self.progress.pack(fill="x", padx=20)
+        top = tk.Frame(self, bg=P.bg)
+        top.pack(fill="x", padx=PAD, pady=(14, 8))
+        ttk.Button(top, text="✕  " + t("finish"), style="Ghost.TButton", command=self.quit_test).pack(side="left")
+        self.score_ok = label(top, font=f["bold"], fg=P.ok)
+        self.score_bad = label(top, font=f["bold"], fg=P.bad)
+        self.score_bad.pack(side="right")
+        self.score_ok.pack(side="right", padx=(0, 14))
+        self.counter = label(top, font=f["bold"], fg=P.muted, anchor="center")
+        self.counter.pack(side="left", fill="x", expand=True)
 
-        self.card = tk.Frame(self, bg=C["card"], highlightthickness=1, highlightbackground=C["border"])
-        self.card.pack(fill="both", expand=True, padx=20, pady=12)
-        self.q_lbl = tk.Label(self.card, bg=C["card"], fg=C["text"], font=self.app.fonts["question"],
-                              justify="left", anchor="w")
-        self.q_lbl.pack(fill="x", padx=20, pady=(18, 12))
-        self.opts = tk.Frame(self.card, bg=C["card"])
-        self.opts.pack(fill="x", padx=20)
-        self.feedback = tk.Label(self.card, bg=C["card"], justify="left", anchor="w")
-        self.feedback.pack(fill="x", padx=20, pady=(12, 4))
-        self.expl = tk.Label(self.card, bg=C["card"], fg=C["muted"], justify="left", anchor="w",
-                             font=self.app.fonts["small"])
-        self.expl.pack(fill="x", padx=20, pady=(0, 12))
+        self.progress = Bar(self)
+        self.progress.pack(fill="x", padx=PAD)
 
-        bottom = tk.Frame(self, bg=C["bg"])
-        bottom.pack(fill="x", padx=20, pady=(0, 14))
-        self.finish_btn = ttk.Button(bottom, command=self.quit_test)
-        self.finish_btn.pack(side="left")
-        self.hint = tk.Label(bottom, bg=C["bg"], fg=C["muted"], font=self.app.fonts["small"])
-        self.hint.pack(side="left", padx=16)
-        self.next_btn = ttk.Button(bottom, style="Accent.TButton", command=self.go_next)
+        bottom = tk.Frame(self, bg=P.bg)
+        bottom.pack(side="bottom", fill="x", padx=PAD, pady=(0, 16))
+        self.hint = label(bottom, font=f["small"], fg=P.muted)
+        self.hint.pack(side="left")
+        self.next_btn = ttk.Button(bottom, command=self.go_next)
         self.next_btn.pack(side="right")
 
-        self.card.bind("<Configure>", self._rewrap)
-        top_level = self.winfo_toplevel()
-        self._bindings = [top_level.bind("<Key>", self._on_key, add="+")]
+        holder = card(self)
+        holder.pack(fill="both", expand=True, padx=PAD, pady=12)
+        self.scroll = ScrollFrame(holder, P.surface)
+        self.scroll.pack(fill="both", expand=True, padx=2, pady=2)
+        content = self.scroll.inner
+        self.q_lbl = label(content, font=f["question"])
+        self.q_lbl.pack(fill="x", padx=24, pady=(18, 12))
+        self.opts = tk.Frame(content, bg=P.surface)
+        self.opts.pack(fill="x", padx=24)
+        self.banner = tk.Frame(content, bg=P.surface)
+        self.banner.pack(fill="x", padx=24, pady=(14, 20))
+        self.feedback = label(self.banner, font=f["bold"])
+        self.feedback.pack(fill="x", padx=14, pady=(10, 2))
+        self.expl = label(self.banner, font=f["small"])
+        self.expl.pack(fill="x", padx=14, pady=(0, 10))
+
+        self.scroll.canvas.bind("<Configure>", self._rewrap, add="+")
+        self.app.bind("<Key>", self._on_key)
         self.render()
 
     def destroy(self):
         try:
-            self.winfo_toplevel().unbind("<Key>")
+            self.app.unbind("<Key>")
         except tk.TclError:
             pass
         super().destroy()
 
     def _rewrap(self, event=None):
-        width = max(self.card.winfo_width() - 60, 200)
+        width = max(self.scroll.canvas.winfo_width() - 60, 240)
         self.q_lbl.configure(wraplength=width)
-        self.feedback.configure(wraplength=width)
-        self.expl.configure(wraplength=width)
-        for b in self.buttons:
-            b.configure(wraplength=width - 40)
-
-    def refresh_texts(self):
-        self.finish_btn.configure(text=t("finish"))
-        self._update_header()
-        if self.answered:
-            self._show_feedback()
-        else:
-            self.next_btn.configure(text=t("skip"))
+        self.feedback.configure(wraplength=width - 30)
+        self.expl.configure(wraplength=width - 30)
+        for r in self.rows:
+            r.text.configure(wraplength=width - 90)
 
     def _update_header(self):
         s = self.session
-        item = s.current
         n = len(s.items)
+        wrong = len(s.answered) - s.score
         self.counter.configure(text=t("question_n", i=min(s.index + 1, n), n=n))
-        self.score_lbl.configure(text=t("score", right=s.score, done=len(s.answered)))
-        self.progress.configure(value=s.index)
-        if item:
-            self.hint.configure(text=t("keys_hint", n=len(item.options)))
+        self.score_ok.configure(text=f"✔ {s.score}")
+        self.score_bad.configure(text=f"✘ {wrong}")
+        done = s.index + (1 if s.current and s.current.chosen is not None else 0)
+        self.progress.set(done / max(n, 1))
+        if s.current:
+            self.hint.configure(text=t("keys_hint", n=len(s.current.options)))
 
     def render(self):
         item = self.session.current
         if item is None:
             self.app.show_results(self.session)
             return
-        self.answered = False
         self.q_lbl.configure(text=item.question.text)
-        for b in self.buttons:
-            b.destroy()
-        self.buttons = []
+        for r in self.rows:
+            r.destroy()
+        self.rows = []
         for pos, text in enumerate(item.options):
-            b = tk.Button(
-                self.opts, text=f"{pos + 1}.  {text}", anchor="w", justify="left",
-                bg=C["card"], fg=C["text"], activebackground=C["hover"], relief="solid", bd=1,
-                highlightthickness=0, padx=12, pady=8, cursor="hand2",
-                command=lambda p=pos: self.choose(p),
-            )
-            b.pack(fill="x", pady=4)
-            b.bind("<Enter>", lambda e, w=b: w.configure(bg=C["hover"]) if not self.answered else None)
-            b.bind("<Leave>", lambda e, w=b: w.configure(bg=C["card"]) if not self.answered else None)
-            self.buttons.append(b)
-        self.feedback.configure(text="", bg=C["card"])
-        self.expl.configure(text="")
-        self.finish_btn.configure(text=t("finish"))
-        self.next_btn.configure(text=t("skip"))
+            row = OptionRow(self.opts, self.app, pos + 1, text, lambda p=pos: self.choose(p))
+            row.pack(fill="x", pady=4)
+            self.rows.append(row)
+        self.scroll.canvas.yview_moveto(0)
+        if item.chosen is not None:  # re-rendered after a theme/language change
+            self._show_feedback()
+        else:
+            self._hide_feedback()
+            self.next_btn.configure(text=t("skip"), style="TButton")
         self._update_header()
         self._rewrap()
 
+    def _hide_feedback(self):
+        self.banner.configure(bg=P.surface)
+        self.feedback.configure(text="", bg=P.surface)
+        self.expl.configure(text="", bg=P.surface)
+
     def choose(self, pos: int):
-        if self.answered:
-            return
         item = self.session.current
+        if item is None or item.chosen is not None:
+            return
         correct = self.session.answer(pos)
         self.app.store.record(self.session.deck_id, item.question.id, correct)
-        self.answered = True
         if self.instant:
             self._show_feedback()
             self._update_header()
-            self.next_btn.configure(text=t("next"))
         else:
             self.go_next()
 
     def _show_feedback(self):
         item = self.session.current
-        if item is None:
-            return
-        for i, b in enumerate(self.buttons):
-            b.configure(cursor="arrow", activebackground=b.cget("bg"))
+        for i, row in enumerate(self.rows):
+            row.disable()
             if i == item.correct_pos:
-                b.configure(bg=C["ok_bg"], fg=C["ok_fg"], activebackground=C["ok_bg"])
+                row.set_state("correct")
             elif i == item.chosen:
-                b.configure(bg=C["bad_bg"], fg=C["bad_fg"], activebackground=C["bad_bg"])
-        if item.is_correct:
-            self.feedback.configure(text="✔ " + t("correct"), fg=C["ok_fg"])
+                row.set_state("wrong")
+            else:
+                row.set_state("dim")
+        bg, fg = (P.ok_bg, P.ok) if item.is_correct else (P.bad_bg, P.bad)
+        text = "✔  " + t("correct") if item.is_correct else "✘  " + t("wrong", answer=item.options[item.correct_pos])
+        self.banner.configure(bg=bg)
+        self.feedback.configure(text=text, bg=bg, fg=fg)
+        expl = item.question.explanation
+        self.expl.configure(text=t("explanation", text=expl) if expl else "", bg=bg, fg=P.text)
+        if expl:
+            self.expl.pack(fill="x", padx=14, pady=(0, 10))
+            self.feedback.pack_configure(pady=(10, 2))
         else:
-            self.feedback.configure(text="✘ " + t("wrong", answer=item.options[item.correct_pos]), fg=C["bad_fg"])
-        if item.question.explanation:
-            self.expl.configure(text=t("explanation", text=item.question.explanation))
-        self.next_btn.configure(text=t("next"))
+            self.expl.pack_forget()
+            self.feedback.pack_configure(pady=10)
+        last = self.session.index == len(self.session.items) - 1
+        self.next_btn.configure(text=t("show_results") if last else t("next"), style="Accent.TButton")
+        self.after(30, lambda: self.winfo_exists() and self.scroll.show_widget(self.banner))
 
     def go_next(self):
         self.session.next()
-        if self.session.index % 10 == 0:
-            self.app.store.save_progress()
         self.render()
 
     def quit_test(self):
-        if self.session.answered and not messagebox.askyesno(APP_NAME, t("confirm_quit"), parent=self):
-            return
         if not self.session.answered:
-            self.app.store.save_progress()
             self.app.show_library()
-            return
-        self.app.show_results(self.session)
+        elif messagebox.askyesno(APP_NAME, t("confirm_quit"), parent=self.app):
+            self.app.show_results(self.session)
 
     def _on_key(self, event):
         if not self.winfo_exists() or isinstance(event.widget, (tk.Entry, ttk.Entry)):
@@ -520,88 +705,125 @@ class QuizView(tk.Frame):
             self.go_next()
             return
         ch = event.char
-        if ch and ch.isdigit() and not self.answered:
+        if ch and ch.isdigit():
             pos = int(ch) - 1
-            if 0 <= pos < len(self.buttons):
+            if 0 <= pos < len(self.rows):
                 self.choose(pos)
 
 
 # ====================================================================
 class ResultsView(tk.Frame):
     def __init__(self, master, app: App, session: Session):
-        super().__init__(master, bg=C["bg"])
+        super().__init__(master, bg=P.bg)
         self.app = app
         self.session = session
-        total = len(session.answered)
+        f = app.fonts
+        answered = len(session.answered)
         right = session.score
-        pct = round(100 * right / total) if total else 0
+        wrong = answered - right
+        skipped = sum(1 for i in session.items[: session.index] if i.chosen is None)
+        pct = round(100 * right / answered) if answered else 0
         grade = "grade_5" if pct >= 90 else "grade_4" if pct >= 75 else "grade_3" if pct >= 60 else "grade_2"
-        color = C["ok_fg"] if pct >= 75 else (C["accent"] if pct >= 60 else C["bad_fg"])
+        color = P.ok if pct >= 75 else (P.accent if pct >= 60 else P.bad)
 
-        head = tk.Frame(self, bg=C["bg"])
-        head.pack(fill="x", padx=20, pady=(16, 4))
-        tk.Label(head, text=f"{pct}%", font=app.fonts["huge"], fg=color, bg=C["bg"]).pack(side="left")
-        info = tk.Frame(head, bg=C["bg"])
-        info.pack(side="left", padx=16)
-        tk.Label(info, text=t(grade), font=app.fonts["title"], fg=C["text"], bg=C["bg"]).pack(anchor="w")
-        tk.Label(info, text=t("result_line", right=right, total=total, pct=pct), fg=C["muted"],
-                 bg=C["bg"]).pack(anchor="w")
+        bar = tk.Frame(self, bg=P.bg)
+        bar.pack(side="bottom", fill="x", padx=PAD, pady=(0, 16))
+        ttk.Button(bar, text="⌂  " + t("home"), style="Ghost.TButton", command=app.show_library).pack(side="left")
+        if session.mistakes:
+            ttk.Button(bar, text="↻  " + t("retry_mistakes"), style="Accent.TButton",
+                       command=self.retry).pack(side="right")
 
-        card = tk.Frame(self, bg=C["card"], highlightthickness=1, highlightbackground=C["border"])
-        card.pack(fill="both", expand=True, padx=20, pady=10)
-        text = tk.Text(card, wrap="word", bd=0, padx=16, pady=12, bg=C["card"], fg=C["text"],
-                       font=app.fonts["base"], cursor="arrow")
-        sb = ttk.Scrollbar(card, orient="vertical", command=text.yview)
+        head = card(self)
+        head.pack(fill="x", padx=PAD, pady=(PAD, 10))
+        ring = tk.Canvas(head, width=150, height=150, bg=P.surface, highlightthickness=0)
+        ring.pack(side="left", padx=24, pady=18)
+        ring.create_oval(14, 14, 136, 136, outline=P.track, width=12)
+        if pct:
+            ring.create_arc(14, 14, 136, 136, start=90, extent=-3.6 * min(pct, 99.99), style="arc",
+                            outline=color, width=12)
+        ring.create_text(75, 75, text=f"{pct}%", fill=P.text, font=f["title"])
+
+        info = tk.Frame(head, bg=P.surface)
+        info.pack(side="left", fill="x", expand=True, pady=18)
+        label(info, t(grade), font=f["title"], fg=color).pack(anchor="w")
+        label(info, t("result_line", right=right, total=answered), fg=P.muted).pack(anchor="w", pady=(2, 12))
+        chips = tk.Frame(info, bg=P.surface)
+        chips.pack(anchor="w")
+        badge(chips, f"✔  {t('chip_right', n=right)}", fg=P.ok, bg=P.ok_bg, font=f["bold"]).pack(side="left")
+        badge(chips, f"✘  {t('chip_wrong', n=wrong)}", fg=P.bad, bg=P.bad_bg, font=f["bold"]).pack(
+            side="left", padx=8)
+        if skipped:
+            badge(chips, f"⤼  {t('chip_skipped', n=skipped)}", fg=P.muted, bg=P.surface2, font=f["bold"]).pack(
+                side="left")
+
+        body = card(self)
+        body.pack(fill="both", expand=True, padx=PAD, pady=(0, 12))
+        mistakes = session.mistakes
+        label(body, t("mistakes_title", n=len(mistakes)) if mistakes else t("no_mistakes"), font=f["h2"],
+              bg=P.surface).pack(fill="x", padx=18, pady=(14, 0))
+        if not mistakes:
+            return
+        text = tk.Text(body, wrap="word", cursor="arrow")
+        style_text(text, f["base"])
+        sb = ttk.Scrollbar(body, orient="vertical", command=text.yview)
         text.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         text.pack(side="left", fill="both", expand=True)
-        text.tag_configure("q", font=app.fonts["bold"], spacing1=10, spacing3=4)
-        text.tag_configure("bad", foreground=C["bad_fg"])
-        text.tag_configure("ok", foreground=C["ok_fg"])
-        text.tag_configure("muted", foreground=C["muted"], font=app.fonts["small"])
-        mistakes = session.mistakes
-        if not mistakes:
-            text.insert("end", t("no_mistakes"), "q")
+        text.tag_configure("q", font=f["bold"], spacing1=12, spacing3=6)
+        text.tag_configure("bad", foreground=P.bad, lmargin1=14, lmargin2=34)
+        text.tag_configure("ok", foreground=P.ok, lmargin1=14, lmargin2=34)
+        text.tag_configure("muted", foreground=P.muted, font=f["small"], lmargin1=14, lmargin2=14, spacing3=4)
         for n, item in enumerate(mistakes, 1):
             text.insert("end", f"{n}. {item.question.text}\n", "q")
-            text.insert("end", "✘ " + t("your_answer", text=item.options[item.chosen]) + "\n", "bad")
-            text.insert("end", "✔ " + t("right_answer", text=item.options[item.correct_pos]) + "\n", "ok")
+            text.insert("end", "✘  " + t("your_answer", text=item.options[item.chosen]) + "\n", "bad")
+            text.insert("end", "✔  " + t("right_answer", text=item.options[item.correct_pos]) + "\n", "ok")
             if item.question.explanation:
                 text.insert("end", item.question.explanation + "\n", "muted")
         text.configure(state="disabled")
 
-        bar = tk.Frame(self, bg=C["bg"])
-        bar.pack(fill="x", padx=20, pady=(0, 16))
-        ttk.Button(bar, text=t("home"), command=app.show_library).pack(side="left")
-        if mistakes:
-            ttk.Button(bar, text="↻ " + t("retry_mistakes"), style="Accent.TButton",
-                       command=self.retry).pack(side="right")
-
     def retry(self):
         questions = [i.question for i in self.session.mistakes]
         random.shuffle(questions)
-        self.app.start_session(Session.create(self.session.deck_id, questions,
-                                              self.app.store.settings["shuffle_options"]),
-                               self.app.store.settings["instant_feedback"])
+        s = self.app.store.settings
+        self.app.start_session(Session.create(self.session.deck_id, questions, s["shuffle_options"]),
+                               s["instant_feedback"])
 
 
 # ====================================================================
 class _Modal(tk.Toplevel):
-    def __init__(self, app: App, title: str):
+    def __init__(self, app: App, title: str, heading: str | None = None):
         super().__init__(app)
         self.app = app
         self.result = None
+        self.withdraw()
         self.title(title)
-        self.configure(bg=C["card"])
+        self.configure(bg=P.surface)
         self.transient(app)
         self.resizable(False, False)
         self.bind("<Escape>", lambda e: self.destroy())
+        self.frame = tk.Frame(self, bg=P.surface)
+        self.frame.pack(fill="both", expand=True, padx=24, pady=20)
+        if heading:
+            label(self.frame, heading, font=app.fonts["h2"]).pack(fill="x", pady=(0, 14))
+
+    def section(self, text: str, top: int = 14):
+        label(self.frame, text.upper(), font=self.app.fonts["small"], fg=P.muted).pack(fill="x", pady=(top, 4))
+
+    def footer(self, ok_text: str, on_ok, cancel: bool = True):
+        bar = tk.Frame(self.frame, bg=P.surface)
+        bar.pack(fill="x", pady=(20, 0))
+        ttk.Button(bar, text=ok_text, style="Accent.TButton", command=on_ok).pack(side="right")
+        if cancel:
+            ttk.Button(bar, text=t("cancel"), command=self.destroy).pack(side="right", padx=8)
+        self.bind("<Return>", lambda e: on_ok())
 
     def run(self):
         self.update_idletasks()
-        x = self.app.winfo_rootx() + (self.app.winfo_width() - self.winfo_width()) // 2
-        y = self.app.winfo_rooty() + (self.app.winfo_height() - self.winfo_height()) // 3
+        x = self.app.winfo_rootx() + (self.app.winfo_width() - self.winfo_reqwidth()) // 2
+        y = self.app.winfo_rooty() + (self.app.winfo_height() - self.winfo_reqheight()) // 3
         self.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        self.deiconify()
+        theme.style_titlebar(self)
         try:
             self.wait_visibility()
             self.grab_set()
@@ -613,49 +835,45 @@ class _Modal(tk.Toplevel):
 
 class SetupDialog(_Modal):
     def __init__(self, app: App, deck):
-        super().__init__(app, t("setup_title"))
+        super().__init__(app, t("setup_title"), heading=deck.name)
         s = app.store.settings
         n = len(deck.questions)
-        frm = ttk.Frame(self, style="Card.TFrame", padding=18)
-        frm.pack(fill="both")
-        tk.Label(frm, text=deck.name, font=app.fonts["bold"], bg=C["card"], wraplength=420,
-                 justify="left").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 10))
+        self.n = n
 
-        tk.Label(frm, text=t("mode"), bg=C["card"], fg=C["muted"]).grid(row=1, column=0, columnspan=4, sticky="w")
+        self.section(t("mode"), top=0)
         self.mode = tk.StringVar(value="smart")
-        for i, m in enumerate(MODES):
-            ttk.Radiobutton(frm, text=t(f"mode_{m}"), value=m, variable=self.mode).grid(
-                row=2 + i, column=0, columnspan=4, sticky="w", padx=8)
-        r = 2 + len(MODES)
+        for m in MODES:
+            Toggle(self.frame, t(f"mode_{m}"), self.mode, value=m).pack(anchor="w", pady=3)
 
-        tk.Label(frm, text=t("count"), bg=C["card"]).grid(row=r, column=0, sticky="w", pady=(12, 0))
+        self.section(t("count"))
+        row = tk.Frame(self.frame, bg=P.surface)
+        row.pack(fill="x")
         self.count = tk.IntVar(value=min(int(s.get("default_count", 30)), n))
-        ttk.Spinbox(frm, from_=1, to=n, textvariable=self.count, width=7).grid(
-            row=r, column=1, sticky="w", pady=(12, 0), padx=6)
+        ttk.Spinbox(row, from_=1, to=n, textvariable=self.count, width=6).pack(side="left")
+        for value in (10, 30, 50):
+            if value < n:
+                ttk.Button(row, text=str(value), style="Chip.TButton", width=0,
+                           command=lambda v=value: self.count.set(v)).pack(side="left", padx=(8, 0))
+        ttk.Button(row, text=t("all_n", n=n), style="Chip.TButton", width=0,
+                   command=lambda: self.count.set(n)).pack(side="left", padx=(8, 0))
 
-        tk.Label(frm, text=t("range"), bg=C["card"]).grid(row=r + 1, column=0, sticky="w", pady=(8, 0))
-        rng = ttk.Frame(frm, style="Card.TFrame")
-        rng.grid(row=r + 1, column=1, columnspan=3, sticky="w", pady=(8, 0), padx=6)
+        self.section(t("range"))
+        rng = tk.Frame(self.frame, bg=P.surface)
+        rng.pack(fill="x")
         self.start = tk.IntVar(value=1)
         self.end = tk.IntVar(value=n)
-        ttk.Spinbox(rng, from_=1, to=n, textvariable=self.start, width=7).pack(side="left")
-        tk.Label(rng, text=" – ", bg=C["card"]).pack(side="left")
-        ttk.Spinbox(rng, from_=1, to=n, textvariable=self.end, width=7).pack(side="left")
+        label(rng, t("range_from"), fg=P.muted).pack(side="left")
+        ttk.Spinbox(rng, from_=1, to=n, textvariable=self.start, width=6).pack(side="left", padx=6)
+        label(rng, t("range_to"), fg=P.muted).pack(side="left")
+        ttk.Spinbox(rng, from_=1, to=n, textvariable=self.end, width=6).pack(side="left", padx=6)
 
+        self.section(t("options_section"))
         self.shuffle = tk.BooleanVar(value=s.get("shuffle_options", True))
         self.feedback = tk.BooleanVar(value=s.get("instant_feedback", True))
-        ttk.Checkbutton(frm, text=t("shuffle_options"), variable=self.shuffle).grid(
-            row=r + 2, column=0, columnspan=4, sticky="w", pady=(12, 0))
-        ttk.Checkbutton(frm, text=t("instant_feedback"), variable=self.feedback).grid(
-            row=r + 3, column=0, columnspan=4, sticky="w")
+        Toggle(self.frame, t("shuffle_options"), self.shuffle).pack(anchor="w", pady=3)
+        Toggle(self.frame, t("instant_feedback"), self.feedback).pack(anchor="w", pady=3)
 
-        btns = ttk.Frame(frm, style="Card.TFrame")
-        btns.grid(row=r + 4, column=0, columnspan=4, sticky="e", pady=(16, 0))
-        ttk.Button(btns, text=t("cancel"), command=self.destroy).pack(side="right")
-        ok = ttk.Button(btns, text="▶ " + t("start"), style="Accent.TButton", command=self.ok)
-        ok.pack(side="right", padx=8)
-        self.bind("<Return>", lambda e: self.ok())
-        self.n = n
+        self.footer("▶  " + t("start"), self.ok)
         self.run()
 
     def ok(self):
@@ -682,15 +900,38 @@ class SetupDialog(_Modal):
         self.destroy()
 
 
+class RenameDialog(_Modal):
+    def __init__(self, app: App, current: str):
+        super().__init__(app, t("rename"), heading=t("rename"))
+        self.entry = ttk.Entry(self.frame, width=44)
+        self.entry.insert(0, current)
+        self.entry.pack(fill="x")
+        self.entry.select_range(0, "end")
+        self.footer(t("save"), self.ok)
+        self.after(50, self.entry.focus_set)
+        self.run()
+
+    def ok(self):
+        name = self.entry.get().strip()
+        if name:
+            self.result = name
+            self.destroy()
+
+
 class GenerateChoiceDialog(_Modal):
     def __init__(self, app: App):
-        super().__init__(app, t("not_bank_title"))
-        frm = ttk.Frame(self, style="Card.TFrame", padding=18)
-        frm.pack(fill="both")
-        tk.Label(frm, text=t("not_bank_body"), bg=C["card"], justify="left").pack(anchor="w", pady=(0, 12))
-        ttk.Button(frm, text=t("gen_offline"), command=lambda: self.pick("offline")).pack(fill="x", pady=3)
-        ttk.Button(frm, text=t("gen_ai"), command=lambda: self.pick("ai")).pack(fill="x", pady=3)
-        ttk.Button(frm, text=t("cancel"), command=self.destroy).pack(anchor="e", pady=(12, 0))
+        super().__init__(app, t("not_bank_title"), heading=t("not_bank_title"))
+        label(self.frame, t("not_bank_body"), fg=P.muted, wraplength=460).pack(fill="x", pady=(0, 12))
+        for key, desc, value in (("gen_offline", "gen_offline_desc", "offline"), ("gen_ai", "gen_ai_desc", "ai")):
+            opt = OptionRow(self.frame, app, 1 if value == "offline" else 2, f"{t(key)}\n{t(desc)}",
+                            lambda v=value: self.pick(v))
+            opt.text.configure(wraplength=420)
+            opt.pack(fill="x", pady=4)
+        bar = tk.Frame(self.frame, bg=P.surface)
+        bar.pack(fill="x", pady=(14, 0))
+        ttk.Button(bar, text=t("cancel"), command=self.destroy).pack(side="right")
+        self.bind("1", lambda e: self.pick("offline"))
+        self.bind("2", lambda e: self.pick("ai"))
         self.run()
 
     def pick(self, value):
@@ -700,44 +941,43 @@ class GenerateChoiceDialog(_Modal):
 
 class SettingsDialog(_Modal):
     def __init__(self, app: App):
-        super().__init__(app, t("settings"))
+        super().__init__(app, t("settings"), heading=t("settings"))
         s = app.store.settings
-        frm = ttk.Frame(self, style="Card.TFrame", padding=18)
-        frm.pack(fill="both")
+        grid = tk.Frame(self.frame, bg=P.surface)
+        grid.pack(fill="x")
+        grid.columnconfigure(1, weight=1)
 
-        def label(row, key):
-            tk.Label(frm, text=t(key), bg=C["card"]).grid(row=row, column=0, sticky="w", pady=5)
+        def row(r, key, widget):
+            label(grid, t(key)).grid(row=r, column=0, sticky="w", pady=6, padx=(0, 16))
+            widget.grid(row=r, column=1, sticky="w", pady=6)
 
-        label(0, "language")
-        self.lang = ttk.Combobox(frm, values=list(LANGUAGES.values()), state="readonly", width=22)
+        self.themes = {m: t(f"theme_{m}") for m in theme.THEMES}
+        self.theme = ttk.Combobox(grid, values=list(self.themes.values()), state="readonly", width=22)
+        self.theme.set(self.themes.get(s.get("theme", "system"), self.themes["system"]))
+        row(0, "theme", self.theme)
+
+        self.lang = ttk.Combobox(grid, values=list(LANGUAGES.values()), state="readonly", width=22)
         self.lang.set(LANGUAGES[s["lang"]])
-        self.lang.grid(row=0, column=1, sticky="w", padx=8)
+        row(1, "language", self.lang)
 
-        label(1, "font_size")
         self.font_size = tk.IntVar(value=s.get("font_size", 12))
-        ttk.Spinbox(frm, from_=9, to=24, textvariable=self.font_size, width=6).grid(row=1, column=1, sticky="w", padx=8)
+        row(2, "font_size", ttk.Spinbox(grid, from_=9, to=24, textvariable=self.font_size, width=6))
 
-        label(2, "default_count")
         self.count = tk.IntVar(value=s.get("default_count", 30))
-        ttk.Spinbox(frm, from_=5, to=500, textvariable=self.count, width=6).grid(row=2, column=1, sticky="w", padx=8)
+        row(3, "default_count", ttk.Spinbox(grid, from_=5, to=500, textvariable=self.count, width=6))
 
-        tk.Label(frm, text=t("ai_section"), bg=C["card"], font=app.fonts["bold"]).grid(
-            row=3, column=0, columnspan=2, sticky="w", pady=(16, 4))
-        label(4, "api_key")
-        self.key = ttk.Entry(frm, width=40, show="•")
+        label(grid, t("ai_section").upper(), font=app.fonts["small"], fg=P.muted).grid(
+            row=4, column=0, columnspan=2, sticky="w", pady=(20, 4))
+        self.key = ttk.Entry(grid, width=36, show="•")
         self.key.insert(0, s.get("api_key", ""))
-        self.key.grid(row=4, column=1, sticky="w", padx=8)
-        label(5, "ai_model")
-        self.model = ttk.Combobox(frm, values=ai.MODELS, width=22)
+        row(5, "api_key", self.key)
+        self.model = ttk.Combobox(grid, values=ai.MODELS, width=22)
         self.model.set(s.get("ai_model", ai.DEFAULT_MODEL))
-        self.model.grid(row=5, column=1, sticky="w", padx=8)
-        tk.Label(frm, text=t("ai_note"), bg=C["card"], fg=C["muted"], font=app.fonts["small"],
-                 wraplength=460, justify="left").grid(row=6, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        row(6, "ai_model", self.model)
+        label(self.frame, t("ai_note"), font=app.fonts["small"], fg=P.muted, wraplength=480).pack(
+            fill="x", pady=(8, 0))
 
-        btns = ttk.Frame(frm, style="Card.TFrame")
-        btns.grid(row=7, column=0, columnspan=2, sticky="e", pady=(16, 0))
-        ttk.Button(btns, text=t("cancel"), command=self.destroy).pack(side="right")
-        ttk.Button(btns, text=t("save"), style="Accent.TButton", command=self.save).pack(side="right", padx=8)
+        self.footer(t("save"), self.save)
         self.run()
 
     def save(self):
@@ -750,13 +990,14 @@ class SettingsDialog(_Modal):
             count = max(int(self.count.get()), 1)
         except (tk.TclError, ValueError):
             count = s["default_count"]
-        s.update(font_size=size, default_count=count, api_key=self.key.get().strip(),
-                 ai_model=self.model.get().strip() or ai.DEFAULT_MODEL)
-        lang = [k for k, v in LANGUAGES.items() if v == self.lang.get()][0]
+        mode = next(k for k, v in self.themes.items() if v == self.theme.get())
+        lang = next(k for k, v in LANGUAGES.items() if v == self.lang.get())
+        s.update(font_size=size, default_count=count, api_key=self.key.get().strip(), theme=mode,
+                 ai_model=self.model.get().strip() or ai.DEFAULT_MODEL, lang=lang)
         self.app.store.save_settings()
-        self.app.apply_font_size(size)
         self.destroy()
-        self.app.change_language(lang)
+        set_language(lang)
+        self.app.apply_font_size(size)  # also re-applies the theme and rebuilds the views
 
 
 class BrowseWindow(tk.Toplevel):
@@ -765,42 +1006,59 @@ class BrowseWindow(tk.Toplevel):
         self.app = app
         self.deck = deck
         self.title(t("browse_title", name=deck.name))
-        self.geometry("820x620")
-        self.configure(bg=C["bg"])
-        top = tk.Frame(self, bg=C["bg"])
-        top.pack(fill="x", padx=12, pady=8)
-        tk.Label(top, text=t("search"), bg=C["bg"]).pack(side="left")
+        self.geometry("860x640")
+        self.configure(bg=P.bg)
+        top = tk.Frame(self, bg=P.bg)
+        top.pack(fill="x", padx=PAD, pady=(16, 10))
+        label(top, "🔍", fg=P.muted).pack(side="left")
         self.query = tk.StringVar()
         entry = ttk.Entry(top, textvariable=self.query)
         entry.pack(side="left", fill="x", expand=True, padx=8)
         entry.focus_set()
+        self.found = label(top, fg=P.muted, font=app.fonts["small"])
+        self.found.pack(side="right")
         self.query.trace_add("write", lambda *a: self.after_idle(self.fill))
 
-        frame = tk.Frame(self, bg=C["card"])
-        frame.pack(fill="both", expand=True, padx=12, pady=(0, 12))
-        self.text = tk.Text(frame, wrap="word", bd=0, padx=14, pady=10, bg=C["card"], font=app.fonts["base"])
+        frame = card(self)
+        frame.pack(fill="both", expand=True, padx=PAD, pady=(0, PAD))
+        self.text = tk.Text(frame, wrap="word")
+        style_text(self.text, app.fonts["base"])
         sb = ttk.Scrollbar(frame, orient="vertical", command=self.text.yview)
         self.text.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.text.pack(fill="both", expand=True)
-        self.text.tag_configure("q", font=app.fonts["bold"], spacing1=10, spacing3=3)
-        self.text.tag_configure("ok", foreground=C["ok_fg"])
-        self.text.tag_configure("opt", foreground=C["muted"])
+        self.text.tag_configure("q", font=app.fonts["bold"], spacing1=14, spacing3=4)
+        self.text.tag_configure("ok", foreground=P.ok, lmargin1=18, lmargin2=36)
+        self.text.tag_configure("opt", foreground=P.muted, lmargin1=18, lmargin2=36)
+        self.text.tag_configure("hit", background=P.selection)
         self.fill()
+        theme.style_titlebar(self)
 
     def fill(self):
         q = self.query.get().strip().lower()
         self.text.configure(state="normal")
         self.text.delete("1.0", "end")
+        shown = 0
         for i, item in enumerate(self.deck.questions, 1):
             if q and q not in item.text.lower() and not any(q in o.lower() for o in item.options):
                 continue
+            shown += 1
             self.text.insert("end", f"{i}. {item.text}\n", "q")
             for j, o in enumerate(item.options):
                 if j == item.answer:
-                    self.text.insert("end", f"   ✔ {o}\n", "ok")
+                    self.text.insert("end", f"✔  {o}\n", "ok")
                 else:
-                    self.text.insert("end", f"   • {o}\n", "opt")
+                    self.text.insert("end", f"•  {o}\n", "opt")
+        if q:
+            start = "1.0"
+            while True:
+                pos = self.text.search(q, start, stopindex="end", nocase=True)
+                if not pos:
+                    break
+                end = f"{pos}+{len(q)}c"
+                self.text.tag_add("hit", pos, end)
+                start = end
+        self.found.configure(text=t("found_n", n=shown))
         self.text.configure(state="disabled")
 
 
@@ -808,22 +1066,20 @@ class TaskDialog(_Modal):
     """Progress window for background work; keeps the UI responsive."""
 
     def __init__(self, app: App, title: str, func, on_done, cancellable: bool):
-        super().__init__(app, APP_NAME)
+        super().__init__(app, APP_NAME, heading=title)
         self.protocol("WM_DELETE_WINDOW", lambda: None)
         self.unbind("<Escape>")
         self.on_done = on_done
         self.q: queue.Queue = queue.Queue()
         self._cancel = threading.Event()
-        frm = ttk.Frame(self, style="Card.TFrame", padding=20)
-        frm.pack(fill="both")
-        tk.Label(frm, text=title, bg=C["card"], font=app.fonts["bold"]).pack(anchor="w")
-        self.status = tk.Label(frm, text="", bg=C["card"], fg=C["muted"], width=40, anchor="w")
-        self.status.pack(anchor="w", pady=(6, 6))
-        self.bar = ttk.Progressbar(frm, length=360, mode="indeterminate")
+        self.status = label(self.frame, fg=P.muted, width=44)
+        self.status.pack(fill="x", pady=(0, 8))
+        self.bar = ttk.Progressbar(self.frame, style="Accent.Horizontal.TProgressbar", length=380,
+                                   mode="indeterminate")
         self.bar.pack(fill="x")
         self.bar.start(12)
         if cancellable:
-            ttk.Button(frm, text=t("cancel"), command=self._cancel.set).pack(anchor="e", pady=(12, 0))
+            ttk.Button(self.frame, text=t("cancel"), command=self._cancel.set).pack(anchor="e", pady=(14, 0))
 
         def progress(text, fraction=None):
             self.q.put(("progress", text, fraction))
@@ -852,10 +1108,7 @@ class TaskDialog(_Modal):
                 else:
                     self.grab_release()
                     self.destroy()
-                    if kind == "done":
-                        self.on_done(a, None)
-                    else:
-                        self.on_done(None, a)
+                    self.on_done(a, None) if kind == "done" else self.on_done(None, a)
                     return
         except queue.Empty:
             pass
