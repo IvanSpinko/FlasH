@@ -6,6 +6,9 @@ py -m pip install --upgrade -r requirements.txt pyinstaller || exit /b 1
 py -m PyInstaller --noconfirm --clean --windowed --name FlasH ^
   --exclude-module numpy --exclude-module PIL --exclude-module matplotlib ^
   run_flash.py || exit /b 1
+rem build\ only holds PyInstaller's intermediate files; its FlasH.exe does not run.
+if exist build rmdir /s /q build
+if exist FlasH.spec del /q FlasH.spec
 copy /y "packaging\*.txt" "dist\FlasH\" >nul
 powershell -NoProfile -Command "Compress-Archive -Path 'dist\FlasH' -DestinationPath 'dist\FlasH-Windows.zip' -Force" || exit /b 1
 echo.
