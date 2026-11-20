@@ -31,6 +31,11 @@ jobs:
       - name: Run ruff
         run: ruff check --output-format=github .
 
+      # Fails if any file isn't formatted; fix it locally with "ruff format .".
+      - name: Check formatting
+        if: ${{ !cancelled() }} # run even if the lint step failed, to show both results
+        run: ruff format --check --diff .
+
   test:
     name: ${{ matrix.os }} · Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
