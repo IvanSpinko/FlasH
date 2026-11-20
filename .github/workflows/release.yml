@@ -1,0 +1,59 @@
+name: Windows build
+
+# - Pushing a tag like v0.2.0 builds FlasH.exe and publishes a GitHub Release
+#   with FlasH-Windows.zip attached.
+# - Pushing changes to the build files (on any branch) only builds, to check
+#   the build still works; the zip is kept as a downloadable workflow artifact.
+# - "Run workflow" on the Actions tab builds on demand (once this file is on main).
+on:
+  push:
+    tags: ["v*"]
+    branches: ["**"]
+    paths:
+      - build.bat
+      - requirements.txt
+      - run_flash.py
+      - packaging/**
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to create the release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      # The same script people run by hand, so the release matches a local build.
+      - name: Build FlasH.exe
+        shell: cmd
+        run: call build.bat
+
+      - name: Check the build output
+        shell: bash
+        run: |
+          test -f dist/FlasH/FlasH.exe
+          test -f dist/FlasH-Windows.zip
+          ls -lh dist/FlasH-Windows.zip
+
+      - name: Upload the zip as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlasH-Windows
+          path: dist/FlasH-Windows.zip
+          if-no-files-found: error
+
+      - name: Publish the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/FlasH-Windows.zip \
+            --title "FlasH $GITHUB_REF_NAME" --generate-notes
