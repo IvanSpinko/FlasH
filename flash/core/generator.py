@@ -10,6 +10,7 @@ questions are produced:
 
 Quality is lower than an AI generator, but it is instant and free.
 """
+
 from __future__ import annotations
 
 import random
@@ -111,7 +112,7 @@ def generate_questions(lines: list[str], limit: int = 300, seed: int | None = No
     for s in sentences:
         m = _DEFINITION.match(s.rstrip("."))
         if m:
-            term = m.group("term").strip(" «»\"")
+            term = m.group("term").strip(' «»"')
             defn = m.group("defn").strip()
             if 1 <= len(term.split()) <= 6 and term.lower() not in _STOP:
                 defs.append((term, defn[0].upper() + defn[1:]))
@@ -143,10 +144,7 @@ def generate_questions(lines: list[str], limit: int = 300, seed: int | None = No
             break
         if s in used_sentences:
             continue
-        keys = [
-            w for w in _WORD.findall(s)
-            if len(w) >= 6 and w.lower() not in _STOP and 1 <= freq[w.lower()] <= 6
-        ]
+        keys = [w for w in _WORD.findall(s) if len(w) >= 6 and w.lower() not in _STOP and 1 <= freq[w.lower()] <= 6]
         if not keys:
             continue
         # Prefer capitalised terms (names, diseases) and longer words.

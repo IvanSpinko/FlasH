@@ -3,6 +3,7 @@
 Returns a flat list of lines. Empty strings mark paragraph breaks (blank lines
 in the document). Page numbers are dropped.
 """
+
 from __future__ import annotations
 
 import os

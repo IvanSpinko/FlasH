@@ -1,4 +1,5 @@
 """Light / dark colour themes for the Tkinter UI."""
+
 from __future__ import annotations
 
 import sys
@@ -123,53 +124,123 @@ def apply(root: tk.Tk, mode: str, fonts: dict) -> None:
     s = ttk.Style(root)
     s.theme_use("clam")
     s.configure(
-        ".", background=P.bg, foreground=P.text, fieldbackground=P.surface, bordercolor=P.border,
-        lightcolor=P.border, darkcolor=P.border, troughcolor=P.track, focuscolor=P.accent,
-        selectbackground=P.selection, selectforeground=P.text, insertcolor=P.text,
-        font=fonts["base"], arrowcolor=P.muted,
+        ".",
+        background=P.bg,
+        foreground=P.text,
+        fieldbackground=P.surface,
+        bordercolor=P.border,
+        lightcolor=P.border,
+        darkcolor=P.border,
+        troughcolor=P.track,
+        focuscolor=P.accent,
+        selectbackground=P.selection,
+        selectforeground=P.text,
+        insertcolor=P.text,
+        font=fonts["base"],
+        arrowcolor=P.muted,
     )
 
     def button(name, bg, fg, border, hover, pressed, font="base", padding=(14, 7)):
-        s.configure(name, background=bg, foreground=fg, bordercolor=border, lightcolor=bg, darkcolor=bg,
-                    relief="flat", padding=padding, font=fonts[font], focusthickness=0, anchor="center")
-        s.map(name,
-              background=[("disabled", P.surface2), ("pressed", pressed), ("active", hover)],
-              lightcolor=[("pressed", pressed), ("active", hover)],
-              darkcolor=[("pressed", pressed), ("active", hover)],
-              bordercolor=[("focus", border), ("active", border)],
-              foreground=[("disabled", P.muted)])
+        s.configure(
+            name,
+            background=bg,
+            foreground=fg,
+            bordercolor=border,
+            lightcolor=bg,
+            darkcolor=bg,
+            relief="flat",
+            padding=padding,
+            font=fonts[font],
+            focusthickness=0,
+            anchor="center",
+        )
+        s.map(
+            name,
+            background=[("disabled", P.surface2), ("pressed", pressed), ("active", hover)],
+            lightcolor=[("pressed", pressed), ("active", hover)],
+            darkcolor=[("pressed", pressed), ("active", hover)],
+            bordercolor=[("focus", border), ("active", border)],
+            foreground=[("disabled", P.muted)],
+        )
 
     button("TButton", P.surface, P.text, P.border, P.hover, P.surface2)
-    button("Accent.TButton", P.accent, P.accent_text, P.accent, P.accent_hover, P.accent_hover, font="bold",
-           padding=(18, 8))
+    button(
+        "Accent.TButton",
+        P.accent,
+        P.accent_text,
+        P.accent,
+        P.accent_hover,
+        P.accent_hover,
+        font="bold",
+        padding=(18, 8),
+    )
     button("Ghost.TButton", P.bg, P.text, P.bg, P.surface2, P.border)
     button("CardGhost.TButton", P.surface, P.muted, P.surface, P.surface2, P.border, font="bold", padding=(10, 6))
     button("Chip.TButton", P.surface2, P.text, P.surface2, P.selection, P.selection, font="small", padding=(10, 4))
 
     for w in ("TEntry", "TSpinbox", "TCombobox"):
-        s.configure(w, fieldbackground=P.surface, foreground=P.text, bordercolor=P.border,
-                    lightcolor=P.surface, darkcolor=P.surface, padding=(8, 5), arrowsize=14,
-                    background=P.surface2, insertcolor=P.text)
-        s.map(w, bordercolor=[("focus", P.accent)], lightcolor=[("focus", P.accent)],
-              fieldbackground=[("readonly", P.surface)], foreground=[("readonly", P.text)],
-              selectbackground=[("readonly", P.surface)], selectforeground=[("readonly", P.text)],
-              background=[("active", P.selection)])
+        s.configure(
+            w,
+            fieldbackground=P.surface,
+            foreground=P.text,
+            bordercolor=P.border,
+            lightcolor=P.surface,
+            darkcolor=P.surface,
+            padding=(8, 5),
+            arrowsize=14,
+            background=P.surface2,
+            insertcolor=P.text,
+        )
+        s.map(
+            w,
+            bordercolor=[("focus", P.accent)],
+            lightcolor=[("focus", P.accent)],
+            fieldbackground=[("readonly", P.surface)],
+            foreground=[("readonly", P.text)],
+            selectbackground=[("readonly", P.surface)],
+            selectforeground=[("readonly", P.text)],
+            background=[("active", P.selection)],
+        )
 
     for w in ("TCheckbutton", "TRadiobutton"):
-        s.configure(w, background=P.surface, foreground=P.text, indicatorbackground=P.surface,
-                    indicatorforeground=P.accent_text, indicatorcolor=P.surface, upperbordercolor=P.border,
-                    lowerbordercolor=P.border, font=fonts["base"], padding=(2, 4), indicatormargin=(0, 0, 8, 0))
-        s.map(w, indicatorcolor=[("selected", P.accent), ("active", P.hover)],
-              background=[("active", P.surface)])
+        s.configure(
+            w,
+            background=P.surface,
+            foreground=P.text,
+            indicatorbackground=P.surface,
+            indicatorforeground=P.accent_text,
+            indicatorcolor=P.surface,
+            upperbordercolor=P.border,
+            lowerbordercolor=P.border,
+            font=fonts["base"],
+            padding=(2, 4),
+            indicatormargin=(0, 0, 8, 0),
+        )
+        s.map(w, indicatorcolor=[("selected", P.accent), ("active", P.hover)], background=[("active", P.surface)])
 
     for orient in ("Vertical", "Horizontal"):
-        s.configure(f"{orient}.TScrollbar", background=P.surface2, troughcolor=P.bg, bordercolor=P.bg,
-                    lightcolor=P.surface2, darkcolor=P.surface2, arrowcolor=P.muted, gripcount=0)
+        s.configure(
+            f"{orient}.TScrollbar",
+            background=P.surface2,
+            troughcolor=P.bg,
+            bordercolor=P.bg,
+            lightcolor=P.surface2,
+            darkcolor=P.surface2,
+            arrowcolor=P.muted,
+            gripcount=0,
+        )
         s.map(f"{orient}.TScrollbar", background=[("active", P.border)])
 
     for name, color in (("Accent", P.accent), ("Ok", P.ok)):
-        s.configure(f"{name}.Horizontal.TProgressbar", background=color, troughcolor=P.track,
-                    bordercolor=P.track, lightcolor=color, darkcolor=color, thickness=6)
+        s.configure(
+            f"{name}.Horizontal.TProgressbar",
+            background=color,
+            troughcolor=P.track,
+            bordercolor=P.track,
+            lightcolor=color,
+            darkcolor=color,
+            thickness=6,
+        )
 
     s.configure("TFrame", background=P.bg)
     s.configure("Card.TFrame", background=P.surface)

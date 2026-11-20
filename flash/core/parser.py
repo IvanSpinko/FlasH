@@ -15,6 +15,7 @@ Typical layout handled here::
 Numbering is optional. A correct answer can also be marked explicitly with a
 leading/trailing ``*`` or ``+`` (then the position does not matter).
 """
+
 from __future__ import annotations
 
 import re
@@ -91,11 +92,14 @@ def _find_stem_end(lines: list[str]) -> int | None:
     return None
 
 
+# Kept on a few lines on purpose; the formatter would put one word per line.
+# fmt: off
 _JOINERS = {
     "і", "i", "й", "та", "в", "у", "з", "із", "зі", "до", "на", "від", "для", "при", "по",
     "без", "або", "чи", "що", "and", "or", "of", "the", "a", "an", "to", "in", "with",
     "for", "by", "on", "и", "с", "к", "от",
 }
+# fmt: on
 
 
 def _join_score(prev: str, cur: str, longest: int) -> float:
@@ -130,6 +134,7 @@ def _split_options(raw: list[str], expected: int) -> list[str]:
     # Still too many lines: wrapped options whose tail starts with a capital
     # ("... фактора" / "Касла"). Join the most likely pairs until it fits.
     while len(items) > expected:
+
         def score(j: int) -> float:
             s = _join_score(items[j - 1][-1], items[j][0], longest)
             return s - 1.5 * (len(items[j - 1]) - 1 + len(items[j]) - 1)
@@ -171,7 +176,7 @@ def try_parse(lines: list[str], expected: int = 5) -> Question | None:
     if end == _INCOMPLETE:
         return None
     if end is not None:
-        stem_lines, raw_opts = lines[: end + 1], lines[end + 1:]
+        stem_lines, raw_opts = lines[: end + 1], lines[end + 1 :]
         options = _split_options(raw_opts, expected)
     else:
         # No "?" / ":" - assume the last `expected` logical lines are options.

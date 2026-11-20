@@ -1,4 +1,5 @@
 """Test session logic (independent from the UI, so it can be unit-tested)."""
+
 from __future__ import annotations
 
 import random
@@ -54,6 +55,7 @@ def select_questions(
         chosen = pool[:]
         rng.shuffle(chosen)
     else:  # smart: weak and unseen first, well-known questions last
+
         def weight(q: Question) -> float:
             s = stats.get(q.id)
             if s is None:
