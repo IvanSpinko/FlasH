@@ -1,0 +1,12 @@
+# Keep the image small and free of personal files.
+.git
+.github
+.venv
+venv
+__pycache__
+*.pyc
+build
+dist
+samples
+*.pdf
+tests

@@ -63,3 +63,33 @@ jobs:
       # The AI tests use a fake Claude client, so no API key is needed.
       - name: Run unit tests
         run: python -m unittest discover -s tests -t . -v
+
+  # The web API (flash/api) and its Docker image. The desktop jobs above
+  # don't install the API libraries, so there the API tests are skipped.
+  api:
+    name: Web API + Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-api.txt httpx
+
+      - name: Run API tests
+        run: python -m unittest tests.test_api -v
+
+      - name: Build the Docker image
+        run: docker build -t flash-api .
+
+      - name: Start a container and check /health
+        run: |
+          docker run -d --name flash-api -p 8000:8000 flash-api
+          for _ in $(seq 1 30); do curl -sf localhost:8000/health && exit 0; sleep 1; done
+          docker logs flash-api
+          exit 1
