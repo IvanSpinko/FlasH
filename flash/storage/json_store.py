@@ -1,4 +1,8 @@
-"""Local storage: decks, progress and settings as JSON in %APPDATA%\\FlasH."""
+"""JSON file storage: decks, progress and settings in a local folder.
+
+The folder is ``%APPDATA%\\FlasH`` on Windows and ``~/FlasH`` elsewhere, or
+``FLASH_DATA_DIR`` when it is set. Used by the desktop app; works offline.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +13,7 @@ import time
 import uuid
 from datetime import datetime
 
-from .model import Deck
+from ..model import Deck
 
 
 def data_dir() -> str:
@@ -49,7 +53,9 @@ DEFAULT_SETTINGS = {
 }
 
 
-class Store:
+class JsonStore:
+    """Implements :class:`flash.storage.Repository` with one JSON file per deck."""
+
     def __init__(self, root: str | None = None):
         self.root = root or data_dir()
         os.makedirs(os.path.join(self.root, "decks"), exist_ok=True)

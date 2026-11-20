@@ -19,12 +19,13 @@ from . import ai, generator
 from .importer import ImportResult, analyse_file
 from .model import Deck, Question
 from .quiz import Session, select_questions
-from .storage import Store
+from .storage import JsonStore, Repository
 
 
 class FlashService:
-    def __init__(self, store: Store | None = None):
-        self.store = store if store is not None else Store()
+    def __init__(self, store: Repository | None = None):
+        # JSON files on this computer by default; any Repository can be passed in.
+        self.store = store if store is not None else JsonStore()
 
     # ----------------------------------------------------------- settings
     @property

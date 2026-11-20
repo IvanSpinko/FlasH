@@ -5,7 +5,7 @@ from unittest import mock
 
 from flash.model import Question
 from flash.service import FlashService
-from flash.storage import Store
+from flash.storage import JsonStore, Repository
 
 BANK = """1. Which organ pumps blood?
 Heart
@@ -30,7 +30,7 @@ S
 class ServiceTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.service = FlashService(Store(self.tmp.name))
+        self.service = FlashService(JsonStore(self.tmp.name))
         qs = [Question(text=f"Q{i}?", options=[f"right{i}", "a", "b", "c"]) for i in range(1, 11)]
         self.deck = self.service.save_deck("Test", "test.pdf", "bank", qs)
 
@@ -55,7 +55,7 @@ class ServiceTests(unittest.TestCase):
         self.assertFalse(self.service.answer(session, 1))
         self.service.save_progress()
 
-        reopened = FlashService(Store(self.tmp.name))
+        reopened = FlashService(JsonStore(self.tmp.name))
         summary = reopened.deck_summary(reopened.list_decks()[0])
         self.assertEqual(summary["seen"], 2)
         self.assertEqual(summary["weak"], 1)
@@ -85,7 +85,7 @@ class ServiceTests(unittest.TestCase):
 
     def test_settings_are_saved(self):
         self.service.update_settings(lang="en", font_size=14)
-        reopened = FlashService(Store(self.tmp.name))
+        reopened = FlashService(JsonStore(self.tmp.name))
         self.assertEqual((reopened.settings["lang"], reopened.settings["font_size"]), ("en", 14))
 
     def test_ai_problem_codes(self):
@@ -95,6 +95,73 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(self.service.ai_problem(), "no_key")
             self.service.update_settings(api_key="sk-test")
             self.assertIsNone(self.service.ai_problem())
+
+
+class MemoryStore:
+    """A storage that keeps everything in memory: no files at all."""
+
+    def __init__(self):
+        self.settings = {"shuffle_options": False}
+        self.decks = {}
+        self.progress = {}
+
+    def save_settings(self):
+        pass
+
+    def list_decks(self):
+        return list(self.decks.values())
+
+    def load_deck(self, deck_id):
+        return self.decks.get(deck_id)
+
+    def create_deck(self, name, source, kind, questions):
+        from flash.model import Deck
+
+        deck = Deck(id=str(len(self.decks) + 1), name=name, source=source, kind=kind, created="", questions=questions)
+        for i, q in enumerate(deck.questions, 1):
+            q.id = str(i)
+        self.decks[deck.id] = deck
+        return deck
+
+    def save_deck(self, deck):
+        self.decks[deck.id] = deck
+
+    def delete_deck(self, deck_id):
+        self.decks.pop(deck_id, None)
+
+    def stats(self, deck_id):
+        return self.progress.setdefault(deck_id, {})
+
+    def record(self, deck_id, question_id, correct):
+        s = self.stats(deck_id).setdefault(question_id, {"seen": 0, "right": 0, "wrong": 0, "streak": 0})
+        s["seen"] += 1
+        s["right" if correct else "wrong"] += 1
+        s["streak"] = s["streak"] + 1 if correct else 0
+
+    def reset_progress(self, deck_id):
+        self.progress[deck_id] = {}
+
+    def save_progress(self):
+        pass
+
+    def summary(self, deck):
+        st = self.progress.get(deck.id, {})
+        return {"total": len(deck.questions), "seen": len(st), "learned": 0, "weak": 0}
+
+
+class RepositoryTests(unittest.TestCase):
+    def test_json_store_is_a_repository(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsInstance(JsonStore(tmp), Repository)
+
+    def test_service_works_with_any_repository(self):
+        store = MemoryStore()
+        self.assertIsInstance(store, Repository)
+        service = FlashService(store)
+        deck = service.save_deck("Memory", "", "bank", [Question(text="Q?", options=["yes", "no", "maybe"])])
+        session = service.start_test(deck, count=1)
+        self.assertTrue(service.answer(session, session.current.correct_pos))
+        self.assertEqual(service.deck_summary(deck)["seen"], 1)
 
 
 if __name__ == "__main__":

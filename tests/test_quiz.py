@@ -5,11 +5,11 @@ import unittest
 from flash.generator import generate_questions
 from flash.model import Question
 from flash.quiz import Session, select_questions
-from flash.storage import Store
+from flash.storage import JsonStore
 
 
 def make_store(tmp):
-    store = Store(tmp)
+    store = JsonStore(tmp)
     qs = [Question(text=f"Q{i}?", options=[f"right{i}", "a", "b", "c", "d"]) for i in range(1, 21)]
     deck = store.create_deck("Test", "test.pdf", "bank", qs)
     return store, deck
@@ -56,7 +56,7 @@ class QuizTests(unittest.TestCase):
     def test_progress_persists(self):
         self.store.record(self.deck.id, "1", True)
         self.store.save_progress()
-        again = Store(self.tmp.name)
+        again = JsonStore(self.tmp.name)
         self.assertEqual(again.summary(again.load_deck(self.deck.id))["seen"], 1)
 
 
