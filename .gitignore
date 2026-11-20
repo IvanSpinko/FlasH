@@ -10,3 +10,4 @@ venv/
 # Study materials are personal and may be copyrighted - keep them out of git
 *.pdf
 samples/
+node_modules/

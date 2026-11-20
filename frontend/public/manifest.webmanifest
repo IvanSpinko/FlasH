@@ -1,0 +1,10 @@
+{
+  "name": "FlasH",
+  "short_name": "FlasH",
+  "description": "Practice tests from your study files",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f4f8",
+  "theme_color": "#4f46e5",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
