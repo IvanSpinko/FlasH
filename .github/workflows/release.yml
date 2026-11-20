@@ -24,9 +24,9 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -47,7 +47,7 @@ jobs:
           ls -lh dist/FlasH-Windows.zip
 
       - name: Upload the zip as a workflow artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: FlasH-Windows
           path: dist/FlasH-Windows.zip
