@@ -9,18 +9,16 @@ from __future__ import annotations
 
 import os
 import queue
-import random
 import threading
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
-from . import ai, generator, theme
+from . import ai, theme
 from .extract import SUPPORTED_EXTENSIONS, ExtractionError
 from .i18n import LANGUAGES, set_language, t
-from .importer import analyse_file
-from .quiz import MODES, Session, select_questions
-from .storage import Store
+from .quiz import MODES, Session
+from .service import FlashService
 from .theme import P
 
 APP_NAME = "FlasH"
@@ -185,16 +183,16 @@ class ScrollFrame(tk.Frame):
 
 # ====================================================================
 class App(tk.Tk):
-    def __init__(self, store: Store | None = None):
+    def __init__(self, service: FlashService | None = None):
         _enable_dpi_awareness()
         super().__init__()
-        self.store = store or Store()
-        set_language(self.store.settings["lang"])
+        self.service = service or FlashService()
+        set_language(self.service.settings["lang"])
         self.title(APP_NAME)
         self.geometry("1000x720")
         self.minsize(680, 520)
         self._init_fonts()
-        theme.apply(self, self.store.settings.get("theme", "system"), self.fonts)
+        theme.apply(self, self.service.settings.get("theme", "system"), self.fonts)
         self._set_icon()
 
         self.header = tk.Frame(self)
@@ -210,7 +208,7 @@ class App(tk.Tk):
 
     # ----------------------------------------------------------- setup
     def _init_fonts(self):
-        size = int(self.store.settings.get("font_size", 12))
+        size = int(self.service.settings.get("font_size", 12))
         families = tkfont.families()
         family = next((f for f in ("Segoe UI Variable Text", "Segoe UI") if f in families), "TkDefaultFont")
         self.fonts = {name: tkfont.Font(family=family) for name in self._FONT_SPEC}
@@ -255,21 +253,19 @@ class App(tk.Tk):
 
     # ----------------------------------------------------------- theme / language
     def refresh_theme(self):
-        theme.apply(self, self.store.settings.get("theme", "system"), self.fonts)
+        theme.apply(self, self.service.settings.get("theme", "system"), self.fonts)
         self._build_header()
         self._rebuild()
 
     def set_theme(self, mode: str):
-        self.store.settings["theme"] = mode
-        self.store.save_settings()
+        self.service.update_settings(theme=mode)
         self.refresh_theme()
 
     def toggle_theme(self):
         self.set_theme("light" if P.name == "dark" else "dark")
 
     def change_language(self, code: str):
-        self.store.settings["lang"] = code
-        self.store.save_settings()
+        self.service.update_settings(lang=code)
         set_language(code)
         self._build_header()
         self._rebuild()
@@ -302,7 +298,7 @@ class App(tk.Tk):
             command=self.toggle_theme,
         ).pack(side="right", padx=4)
         lang = ttk.Combobox(inner, values=list(LANGUAGES.values()), state="readonly", width=11)
-        lang.set(LANGUAGES[self.store.settings["lang"]])
+        lang.set(LANGUAGES[self.service.settings["lang"]])
         lang.pack(side="right", padx=8)
         lang.bind(
             "<<ComboboxSelected>>",
@@ -311,11 +307,11 @@ class App(tk.Tk):
 
     # ----------------------------------------------------------- views
     def on_close(self):
-        self.store.save_progress()
+        self.service.save_progress()
         self.destroy()
 
     def _show(self, factory):
-        self.store.save_progress()
+        self.service.save_progress()
         if self.view is not None:
             self.view.destroy()
         self._factory = factory
@@ -355,7 +351,7 @@ class App(tk.Tk):
             return
 
         def work(progress, cancelled):
-            return analyse_file(path, lambda d, n: progress(t("page_progress", done=d, total=n), d / n))
+            return self.service.analyse_file(path, lambda d, n: progress(t("page_progress", done=d, total=n), d / n))
 
         self.run_task(t("importing"), work, self._after_analyse)
 
@@ -374,28 +370,25 @@ class App(tk.Tk):
         if choice == "offline":
             self.run_task(
                 t("generating"),
-                lambda p, c: generator.generate_questions(result.lines),
+                lambda p, c: self.service.generate_offline(result),
                 lambda qs, err: self._finish_generated(result, "generated", qs, err),
             )
         elif choice == "ai":
             self._generate_ai(result)
 
     def _generate_ai(self, result):
-        if not ai.is_available():
+        problem = self.service.ai_problem()
+        if problem == "unavailable":
             messagebox.showerror(APP_NAME, t("ai_unavailable"), parent=self)
             return
-        key = self.store.settings.get("api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
-        if not key:
+        if problem == "no_key":
             messagebox.showinfo(APP_NAME, t("ai_no_key"), parent=self)
             self.open_settings()
             return
-        model = self.store.settings.get("ai_model", ai.DEFAULT_MODEL)
 
         def work(progress, cancelled):
-            return ai.generate_questions(
-                result.lines,
-                key,
-                model,
+            return self.service.generate_with_ai(
+                result,
                 progress=lambda d, n: progress(t("ai_progress", done=d, total=n), d / n),
                 cancelled=cancelled,
             )
@@ -421,7 +414,7 @@ class App(tk.Tk):
         if not questions:
             messagebox.showwarning(APP_NAME, t("no_questions"), parent=self)
             return
-        self.store.create_deck(name, source, kind, questions)
+        self.service.save_deck(name, source, kind, questions)
         messagebox.showinfo(APP_NAME, t("import_done", n=len(questions)), parent=self)
         self.show_library()
 
@@ -432,7 +425,7 @@ class LibraryView(tk.Frame):
         super().__init__(master, bg=P.bg)
         self.app = app
         f = app.fonts
-        decks = app.store.list_decks()
+        decks = app.service.list_decks()
 
         top = tk.Frame(self, bg=P.bg)
         top.pack(fill="x", padx=PAD, pady=(PAD, 8))
@@ -476,7 +469,7 @@ class DeckCard(tk.Frame):
         self.app = app
         self.deck = deck
         f = app.fonts
-        s = app.store.summary(deck)
+        s = app.service.deck_summary(deck)
         pct = round(100 * s["learned"] / s["total"]) if s["total"] else 0
 
         body = tk.Frame(self, bg=P.surface)
@@ -532,36 +525,33 @@ class DeckCard(tk.Frame):
         params = SetupDialog(self.app, deck).result
         if not params:
             return
-        store = self.app.store
-        questions = select_questions(
+        session = self.app.service.start_test(
             deck,
-            store.stats(deck.id),
             mode=params["mode"],
             count=params["count"],
             start=params["start"],
             end=params["end"],
+            shuffle_options=params["shuffle"],
         )
-        if not questions:
+        if session is None:
             messagebox.showinfo(APP_NAME, t("nothing_selected"), parent=self.app)
             return
-        session = Session.create(deck.id, questions, shuffle_options=params["shuffle"])
         self.app.start_session(session, params["feedback"])
 
     def rename(self):
         name = RenameDialog(self.app, self.deck.name).result
         if name:
-            self.deck.name = name
-            self.app.store.save_deck(self.deck)
+            self.app.service.rename_deck(self.deck, name)
             self.app.show_library()
 
     def reset(self):
         if messagebox.askyesno(APP_NAME, t("confirm_reset", name=self.deck.name), parent=self.app):
-            self.app.store.reset_progress(self.deck.id)
+            self.app.service.reset_progress(self.deck.id)
             self.app.show_library()
 
     def delete(self):
         if messagebox.askyesno(APP_NAME, t("confirm_delete", name=self.deck.name), parent=self.app):
-            self.app.store.delete_deck(self.deck.id)
+            self.app.service.delete_deck(self.deck.id)
             self.app.show_library()
 
 
@@ -714,8 +704,7 @@ class QuizView(tk.Frame):
         item = self.session.current
         if item is None or item.chosen is not None:
             return
-        correct = self.session.answer(pos)
-        self.app.store.record(self.session.deck_id, item.question.id, correct)
+        self.app.service.answer(self.session, pos)
         if self.instant:
             self._show_feedback()
             self._update_header()
@@ -845,12 +834,8 @@ class ResultsView(tk.Frame):
         text.configure(state="disabled")
 
     def retry(self):
-        questions = [i.question for i in self.session.mistakes]
-        random.shuffle(questions)
-        s = self.app.store.settings
-        self.app.start_session(
-            Session.create(self.session.deck_id, questions, s["shuffle_options"]), s["instant_feedback"]
-        )
+        session = self.app.service.retry_mistakes(self.session)
+        self.app.start_session(session, self.app.service.settings["instant_feedback"])
 
 
 # ====================================================================
@@ -900,7 +885,7 @@ class _Modal(tk.Toplevel):
 class SetupDialog(_Modal):
     def __init__(self, app: App, deck):
         super().__init__(app, t("setup_title"), heading=deck.name)
-        s = app.store.settings
+        s = app.service.settings
         n = len(deck.questions)
         self.n = n
 
@@ -959,10 +944,9 @@ class SetupDialog(_Modal):
             "shuffle": self.shuffle.get(),
             "feedback": self.feedback.get(),
         }
-        s = self.app.store.settings
-        s["shuffle_options"] = self.result["shuffle"]
-        s["instant_feedback"] = self.result["feedback"]
-        self.app.store.save_settings()
+        self.app.service.update_settings(
+            shuffle_options=self.result["shuffle"], instant_feedback=self.result["feedback"]
+        )
         self.destroy()
 
 
@@ -1009,7 +993,7 @@ class GenerateChoiceDialog(_Modal):
 class SettingsDialog(_Modal):
     def __init__(self, app: App):
         super().__init__(app, t("settings"), heading=t("settings"))
-        s = app.store.settings
+        s = app.service.settings
         grid = tk.Frame(self.frame, bg=P.surface)
         grid.pack(fill="x")
         grid.columnconfigure(1, weight=1)
@@ -1048,7 +1032,7 @@ class SettingsDialog(_Modal):
         self.run()
 
     def save(self):
-        s = self.app.store.settings
+        s = self.app.service.settings
         try:
             size = min(max(int(self.font_size.get()), 9), 24)
         except (tk.TclError, ValueError):
@@ -1059,7 +1043,7 @@ class SettingsDialog(_Modal):
             count = s["default_count"]
         mode = next(k for k, v in self.themes.items() if v == self.theme.get())
         lang = next(k for k, v in LANGUAGES.items() if v == self.lang.get())
-        s.update(
+        self.app.service.update_settings(
             font_size=size,
             default_count=count,
             api_key=self.key.get().strip(),
@@ -1067,7 +1051,6 @@ class SettingsDialog(_Modal):
             ai_model=self.model.get().strip() or ai.DEFAULT_MODEL,
             lang=lang,
         )
-        self.app.store.save_settings()
         self.destroy()
         set_language(lang)
         self.app.apply_font_size(size)  # also re-applies the theme and rebuilds the views
