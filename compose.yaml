@@ -1,0 +1,30 @@
+# The FlasH web version: the API and the web app, each in its own container.
+#   docker compose up --build
+# Then open http://localhost:8080 (on a phone in the same Wi-Fi: http://<this computer's IP>:8080)
+# The desktop app doesn't use any of this.
+
+services:
+  api:
+    build: .
+    # --root-path: the API is reached through the web app at /api, so its /docs page works at /api/docs.
+    command: ["uvicorn", "flash.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--root-path", "/api"]
+    volumes:
+      - flash-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  flash-data:

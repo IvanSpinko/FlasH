@@ -1,9 +1,9 @@
 # FlasH architecture
 
-FlasH has one "brain" and two front ends. The desktop app and the web API both go through `FlashService`, so they share the same logic. Only the web API needs a network.
+FlasH has one "brain" and two front ends. The desktop app and the web API both go through `FlashService`, so they share the same logic. The web API is used by the web app, which runs in any browser, including phones. Only the web version needs a network.
 
 - **The desktop app stays offline.** The Tkinter window calls the service directly, inside the same program. No server is involved.
-- **The web API reuses the brain.** FastAPI, running in Docker, calls the same service methods, so a fix to the parser helps both.
+- **The web version reuses the brain.** The web app (React) talks to the web API (FastAPI), which calls the same service methods, so a fix to the parser helps both. Each runs in its own Docker container, started together with `docker compose up`.
 - **Storage can be swapped.** The service only knows the `Repository` interface: JSON files today, a database later.
 
 ## How the code is organised
@@ -11,7 +11,11 @@ FlasH has one "brain" and two front ends. The desktop app and the web API both g
 ```mermaid
 flowchart TB
     user["Desktop user<br/>FlasH.exe · run_flash.py · python -m flash"]
-    client["Web client<br/>browser /docs · curl · future phone app"]
+    phone["Student on a phone or any browser"]
+
+    subgraph web["frontend/ · React web app, served by nginx (own container)"]
+        pages["library · test setup · quiz · results<br/>Ukrainian / English · light / dark"]
+    end
 
     subgraph desktop["flash/desktop · Tkinter window"]
         screens["app.py · library_view · quiz_view · results_view<br/>dialogs · widgets · theme · i18n"]
@@ -40,7 +44,8 @@ flowchart TB
     data[("Data folder · FLASH_DATA_DIR<br/>desktop: ~/FlasH or %APPDATA%\FlasH<br/>Docker: /data, in the volume flash-data")]
 
     user -- "opens the window" --> desktop
-    client -. "HTTP + JSON" .-> api
+    phone -. "opens http://server:8080" .-> web
+    web -. "/api/... (HTTP + JSON)" .-> api
     desktop -- "direct calls, in-process: works offline" --> service
     api -- "the same calls, inside Docker" --> service
     service -- "uses" --> core
@@ -65,6 +70,7 @@ Solid arrows are calls inside one program. Dashed arrows go over the network or 
 | `flash/service.py` | `FlashService`, the one entry point to the logic | no | only through `Repository` |
 | `flash/desktop` | the Tkinter app, one module per screen | yes | no |
 | `flash/api` | the optional web API | HTTP only | no |
+| `frontend/` | the optional web app (React), in its own container | yes | no, only talks to the API |
 
 ## What happens when you import a file
 
@@ -106,6 +112,7 @@ flowchart LR
         lint["Lint<br/>ruff check · ruff format --check"]
         matrix["Tests × 4<br/>Windows · macOS · Ubuntu with Python 3.13<br/>Ubuntu with Python 3.10"]
         apijob["Web API + Docker<br/>API tests · docker build · /health"]
+        webjob["Web app + Compose<br/>type-check · build · both containers start"]
     end
 
     tag["git tag v0.2.0<br/>git push origin v0.2.0"] -- "starts" --> build

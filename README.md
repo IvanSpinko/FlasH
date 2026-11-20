@@ -86,20 +86,30 @@ flash/
     widgets.py        shared building blocks
     theme.py          light/dark palettes and ttk styling
     i18n.py           UA/EN strings
-  api/              optional web API (FastAPI) for a future website or phone app
+  api/              optional web API (FastAPI) used by the web app
     app.py
+frontend/           optional web app (React): runs in any browser, including phones
+compose.yaml        starts the web API and the web app together
 tests/              unit tests: py -m unittest discover -s tests -t .
 ```
 
-## Web API (optional)
+## Web version (optional)
 
-The web API is a separate way to use FlasH's logic over HTTP, for example from a website or a phone app. The desktop app doesn't need it.
+FlasH can also run as a website that works in any browser, including on phones. It is two containers: the web app (`frontend/`, React) and the web API (`flash/api`). The desktop app doesn't need either of them.
+
+```bash
+docker compose up --build
+```
+
+Then open http://localhost:8080. On a phone in the same Wi-Fi network, open `http://<this computer's IP>:8080`; in the browser menu, "Add to Home Screen" makes it look like an app. The API's own docs are at http://localhost:8080/api/docs. Decks and progress are kept in the Docker volume `flash-data`.
+
+To work on the web app with live reload, run the API (`uvicorn flash.api.app:create_app --factory`, after `pip install -r requirements-api.txt`) and, in `frontend/`, `npm install` and `npm run dev`.
+
+The API can also run on its own:
 
 ```bash
 docker build -t flash-api .
 docker run -p 8000:8000 -v flash-data:/data flash-api
 ```
 
-Then open http://localhost:8000/docs to try it. Without Docker: `pip install -r requirements-api.txt` and `uvicorn flash.api.app:create_app --factory`.
-
-This first version has no user accounts, keeps running tests in memory, and doesn't offer AI generation.
+This first version has no user accounts (everyone using the server shares the same decks), keeps running tests in memory, and doesn't offer AI generation.
