@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from flash import ai
+from flash.core import ai
 
 
 class FakeMessages:

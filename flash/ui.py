@@ -14,10 +14,11 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
-from . import ai, theme
-from .extract import SUPPORTED_EXTENSIONS, ExtractionError
+from . import theme
+from .core import ai
+from .core.extract import SUPPORTED_EXTENSIONS, ExtractionError
 from .i18n import LANGUAGES, set_language, t
-from .quiz import MODES, Session
+from .core.quiz import MODES, Session
 from .service import FlashService
 from .theme import P
 

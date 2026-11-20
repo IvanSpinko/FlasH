@@ -2,9 +2,9 @@ import random
 import tempfile
 import unittest
 
-from flash.generator import generate_questions
-from flash.model import Question
-from flash.quiz import Session, select_questions
+from flash.core.generator import generate_questions
+from flash.core.model import Question
+from flash.core.quiz import Session, select_questions
 from flash.storage import JsonStore
 
 

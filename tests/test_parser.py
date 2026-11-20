@@ -1,6 +1,6 @@
 import unittest
 
-from flash.parser import parse_question_bank, looks_like_question_bank
+from flash.core.parser import parse_question_bank, looks_like_question_bank
 
 KROK_COLUMNS = """
 1. Під час тривалого голодування

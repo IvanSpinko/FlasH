@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from flash.model import Question
+from flash.core.model import Question
 from flash.service import FlashService
 from flash.storage import JsonStore, Repository
 
@@ -89,9 +89,9 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual((reopened.settings["lang"], reopened.settings["font_size"]), ("en", 14))
 
     def test_ai_problem_codes(self):
-        with mock.patch("flash.ai.is_available", return_value=False):
+        with mock.patch("flash.core.ai.is_available", return_value=False):
             self.assertEqual(self.service.ai_problem(), "unavailable")
-        with mock.patch("flash.ai.is_available", return_value=True), mock.patch.dict(os.environ, clear=True):
+        with mock.patch("flash.core.ai.is_available", return_value=True), mock.patch.dict(os.environ, clear=True):
             self.assertEqual(self.service.ai_problem(), "no_key")
             self.service.update_settings(api_key="sk-test")
             self.assertIsNone(self.service.ai_problem())
@@ -115,7 +115,7 @@ class MemoryStore:
         return self.decks.get(deck_id)
 
     def create_deck(self, name, source, kind, questions):
-        from flash.model import Deck
+        from flash.core.model import Deck
 
         deck = Deck(id=str(len(self.decks) + 1), name=name, source=source, kind=kind, created="", questions=questions)
         for i, q in enumerate(deck.questions, 1):

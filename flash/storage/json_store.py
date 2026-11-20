@@ -13,7 +13,7 @@ import time
 import uuid
 from datetime import datetime
 
-from ..model import Deck
+from ..core.model import Deck
 
 
 def data_dir() -> str:

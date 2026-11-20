@@ -15,10 +15,10 @@ from __future__ import annotations
 import os
 import random
 
-from . import ai, generator
-from .importer import ImportResult, analyse_file
-from .model import Deck, Question
-from .quiz import Session, select_questions
+from .core import ai, generator
+from .core.importer import ImportResult, analyse_file
+from .core.model import Deck, Question
+from .core.quiz import Session, select_questions
 from .storage import JsonStore, Repository
 
 
