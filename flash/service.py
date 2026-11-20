@@ -40,6 +40,9 @@ class FlashService:
     def list_decks(self) -> list[Deck]:
         return self.store.list_decks()
 
+    def get_deck(self, deck_id: str) -> Deck | None:
+        return self.store.load_deck(deck_id)
+
     def deck_summary(self, deck: Deck) -> dict:
         """Counts for a deck: total, seen, learned (2+ right in a row) and weak."""
         return self.store.summary(deck)

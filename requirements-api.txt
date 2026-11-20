@@ -1,0 +1,5 @@
+# Web API only (flash/api). The desktop app and FlasH.exe don't need these.
+-r requirements.txt
+fastapi>=0.165
+uvicorn>=0.54
+python-multipart>=0.0.34
