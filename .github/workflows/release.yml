@@ -31,8 +31,12 @@ jobs:
           python-version: "3.13"
 
       # The same script people run by hand, so the release matches a local build.
+      # build.bat calls the "py" launcher, which otherwise picks the newest
+      # Python on the runner; pin it to the version set up above.
       - name: Build FlasH.exe
         shell: cmd
+        env:
+          PY_PYTHON: "3.13"
         run: call build.bat
 
       - name: Check the build output
@@ -43,7 +47,7 @@ jobs:
           ls -lh dist/FlasH-Windows.zip
 
       - name: Upload the zip as a workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: FlasH-Windows
           path: dist/FlasH-Windows.zip
