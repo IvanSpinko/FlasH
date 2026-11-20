@@ -4,6 +4,7 @@ Tkinter ships with Python, starts fast and needs very little memory, so FlasH
 runs on old and low-end Windows laptops. Colours come from ``theme.P`` and every
 view is rebuilt when the theme changes.
 """
+
 from __future__ import annotations
 
 import os
@@ -37,13 +38,22 @@ def _enable_dpi_awareness() -> None:
 
 # ------------------------------------------------------------------ helpers
 def card(parent, **kw) -> tk.Frame:
-    return tk.Frame(parent, bg=P.surface, highlightthickness=1, highlightbackground=P.border,
-                    highlightcolor=P.border, **kw)
+    return tk.Frame(
+        parent, bg=P.surface, highlightthickness=1, highlightbackground=P.border, highlightcolor=P.border, **kw
+    )
 
 
 def label(parent, text="", font=None, fg=None, bg=None, **kw) -> tk.Label:
-    return tk.Label(parent, text=text, font=font, fg=fg or P.text, bg=bg or parent.cget("bg"),
-                    justify=kw.pop("justify", "left"), anchor=kw.pop("anchor", "w"), **kw)
+    return tk.Label(
+        parent,
+        text=text,
+        font=font,
+        fg=fg or P.text,
+        bg=bg or parent.cget("bg"),
+        justify=kw.pop("justify", "left"),
+        anchor=kw.pop("anchor", "w"),
+        **kw,
+    )
 
 
 def badge(parent, text, fg=None, bg=None, font=None) -> tk.Label:
@@ -51,8 +61,18 @@ def badge(parent, text, fg=None, bg=None, font=None) -> tk.Label:
 
 
 def style_text(widget: tk.Text, font) -> None:
-    widget.configure(bg=P.surface, fg=P.text, insertbackground=P.text, selectbackground=P.selection,
-                     selectforeground=P.text, font=font, bd=0, highlightthickness=0, padx=18, pady=14)
+    widget.configure(
+        bg=P.surface,
+        fg=P.text,
+        insertbackground=P.text,
+        selectbackground=P.selection,
+        selectforeground=P.text,
+        font=font,
+        bd=0,
+        highlightthickness=0,
+        padx=18,
+        pady=14,
+    )
 
 
 class Bar(tk.Frame):
@@ -119,8 +139,9 @@ class Toggle(tk.Frame):
             if on:
                 c.create_oval(6, 6, 14, 14, outline=P.accent, fill=P.accent)
         else:
-            c.create_rectangle(2, 2, 18, 18, outline=P.accent if on else border, width=2,
-                               fill=P.accent if on else P.surface)
+            c.create_rectangle(
+                2, 2, 18, 18, outline=P.accent if on else border, width=2, fill=P.accent if on else P.surface
+            )
             if on:
                 c.create_line(5, 10, 9, 14, 15, 6, fill=P.accent_text, width=2.5, capstyle="round")
 
@@ -197,8 +218,14 @@ class App(tk.Tk):
         self.option_add("*Font", self.fonts["base"])
 
     _FONT_SPEC = {
-        "small": (-2, "normal"), "base": (0, "normal"), "bold": (0, "bold"), "h2": (3, "bold"),
-        "question": (3, "bold"), "title": (8, "bold"), "huge": (16, "bold"), "icon": (26, "normal"),
+        "small": (-2, "normal"),
+        "base": (0, "normal"),
+        "bold": (0, "bold"),
+        "h2": (3, "bold"),
+        "question": (3, "bold"),
+        "title": (8, "bold"),
+        "huge": (16, "bold"),
+        "icon": (26, "normal"),
     }
 
     def apply_font_size(self, size: int, restyle: bool = True):
@@ -260,18 +287,27 @@ class App(tk.Tk):
         tk.Label(logo, text="FlasH", font=self.fonts["title"], fg=P.text, bg=P.surface).pack(side="left")
         for w in (logo, *logo.winfo_children()):
             w.bind("<Button-1>", lambda e: self.show_library())
-        label(inner, t("app_tagline"), font=self.fonts["small"], fg=P.muted).pack(side="left", padx=(12, 0), pady=(6, 0))
+        label(inner, t("app_tagline"), font=self.fonts["small"], fg=P.muted).pack(
+            side="left", padx=(12, 0), pady=(6, 0)
+        )
 
-        ttk.Button(inner, text="⚙  " + t("settings"), style="CardGhost.TButton",
-                   command=self.open_settings).pack(side="right")
+        ttk.Button(inner, text="⚙  " + t("settings"), style="CardGhost.TButton", command=self.open_settings).pack(
+            side="right"
+        )
         icon = "☼" if P.name == "dark" else "☾"
-        ttk.Button(inner, text=f"{icon}  " + (t("theme_light") if P.name == "dark" else t("theme_dark")),
-                   style="CardGhost.TButton", command=self.toggle_theme).pack(side="right", padx=4)
+        ttk.Button(
+            inner,
+            text=f"{icon}  " + (t("theme_light") if P.name == "dark" else t("theme_dark")),
+            style="CardGhost.TButton",
+            command=self.toggle_theme,
+        ).pack(side="right", padx=4)
         lang = ttk.Combobox(inner, values=list(LANGUAGES.values()), state="readonly", width=11)
         lang.set(LANGUAGES[self.store.settings["lang"]])
         lang.pack(side="right", padx=8)
-        lang.bind("<<ComboboxSelected>>", lambda e: self.change_language(
-            next(k for k, v in LANGUAGES.items() if v == lang.get())))
+        lang.bind(
+            "<<ComboboxSelected>>",
+            lambda e: self.change_language(next(k for k, v in LANGUAGES.items() if v == lang.get())),
+        )
 
     # ----------------------------------------------------------- views
     def on_close(self):
@@ -311,7 +347,8 @@ class App(tk.Tk):
     def import_file(self):
         exts = " ".join(f"*{e}" for e in SUPPORTED_EXTENSIONS)
         path = filedialog.askopenfilename(
-            parent=self, title=t("import"),
+            parent=self,
+            title=t("import"),
             filetypes=[(t("file_types"), exts), (t("all_files"), "*.*")],
         )
         if not path:
@@ -356,13 +393,16 @@ class App(tk.Tk):
 
         def work(progress, cancelled):
             return ai.generate_questions(
-                result.lines, key, model,
+                result.lines,
+                key,
+                model,
                 progress=lambda d, n: progress(t("ai_progress", done=d, total=n), d / n),
                 cancelled=cancelled,
             )
 
         self.run_task(
-            t("generating"), work,
+            t("generating"),
+            work,
             lambda qs, err: self._finish_generated(result, "ai", qs, err),
             cancellable=True,
         )
@@ -402,7 +442,8 @@ class LibraryView(tk.Frame):
         if decks:
             label(titles, t("decks_count", n=len(decks)), font=f["small"], fg=P.muted).pack(anchor="w")
         ttk.Button(top, text="＋  " + t("import"), style="Accent.TButton", command=app.import_file).pack(
-            side="right", anchor="s")
+            side="right", anchor="s"
+        )
 
         if not decks:
             self._empty_state()
@@ -421,16 +462,17 @@ class LibraryView(tk.Frame):
         center.place(relx=0.5, rely=0.45, anchor="center")
         tk.Label(center, text="📚", font=f["icon"], bg=P.surface, fg=P.accent).pack()
         label(center, t("empty_title"), font=f["h2"], anchor="center", justify="center").pack(pady=(8, 4))
-        label(center, t("empty_library"), fg=P.muted, wraplength=460, anchor="center",
-              justify="center").pack()
-        ttk.Button(center, text="＋  " + t("import"), style="Accent.TButton",
-                   command=self.app.import_file).pack(pady=(18, 0))
+        label(center, t("empty_library"), fg=P.muted, wraplength=460, anchor="center", justify="center").pack()
+        ttk.Button(center, text="＋  " + t("import"), style="Accent.TButton", command=self.app.import_file).pack(
+            pady=(18, 0)
+        )
 
 
 class DeckCard(tk.Frame):
     def __init__(self, master, app: App, deck):
-        super().__init__(master, bg=P.surface, highlightthickness=1, highlightbackground=P.border,
-                         highlightcolor=P.border)
+        super().__init__(
+            master, bg=P.surface, highlightthickness=1, highlightbackground=P.border, highlightcolor=P.border
+        )
         self.app = app
         self.deck = deck
         f = app.fonts
@@ -468,8 +510,16 @@ class DeckCard(tk.Frame):
                 w.bind("<Double-Button-1>", lambda e: self.start())
 
     def menu(self, anchor):
-        m = tk.Menu(self, tearoff=0, bg=P.surface, fg=P.text, activebackground=P.selection,
-                    activeforeground=P.text, bd=0, font=self.app.fonts["base"])
+        m = tk.Menu(
+            self,
+            tearoff=0,
+            bg=P.surface,
+            fg=P.text,
+            activebackground=P.selection,
+            activeforeground=P.text,
+            bd=0,
+            font=self.app.fonts["base"],
+        )
         m.add_command(label="🔍  " + t("browse"), command=lambda: BrowseWindow(self.app, self.deck))
         m.add_command(label="✎  " + t("rename"), command=self.rename)
         m.add_command(label="↺  " + t("reset"), command=self.reset)
@@ -484,8 +534,12 @@ class DeckCard(tk.Frame):
             return
         store = self.app.store
         questions = select_questions(
-            deck, store.stats(deck.id), mode=params["mode"], count=params["count"],
-            start=params["start"], end=params["end"],
+            deck,
+            store.stats(deck.id),
+            mode=params["mode"],
+            count=params["count"],
+            start=params["start"],
+            end=params["end"],
         )
         if not questions:
             messagebox.showinfo(APP_NAME, t("nothing_selected"), parent=self.app)
@@ -516,8 +570,14 @@ class OptionRow(tk.Frame):
     """A clickable answer option: number badge + wrapped text."""
 
     def __init__(self, master, app: App, number: int, text: str, on_click):
-        super().__init__(master, bg=P.surface, highlightthickness=1, highlightbackground=P.border,
-                         highlightcolor=P.border, cursor="hand2")
+        super().__init__(
+            master,
+            bg=P.surface,
+            highlightthickness=1,
+            highlightbackground=P.border,
+            highlightcolor=P.border,
+            cursor="hand2",
+        )
         self.enabled = True
         self.badge = tk.Label(self, text=str(number), width=3, font=app.fonts["bold"], pady=2)
         self.badge.pack(side="left", padx=(10, 0), pady=7, anchor="n")
@@ -730,8 +790,9 @@ class ResultsView(tk.Frame):
         bar.pack(side="bottom", fill="x", padx=PAD, pady=(0, 16))
         ttk.Button(bar, text="⌂  " + t("home"), style="Ghost.TButton", command=app.show_library).pack(side="left")
         if session.mistakes:
-            ttk.Button(bar, text="↻  " + t("retry_mistakes"), style="Accent.TButton",
-                       command=self.retry).pack(side="right")
+            ttk.Button(bar, text="↻  " + t("retry_mistakes"), style="Accent.TButton", command=self.retry).pack(
+                side="right"
+            )
 
         head = card(self)
         head.pack(fill="x", padx=PAD, pady=(PAD, 10))
@@ -739,8 +800,9 @@ class ResultsView(tk.Frame):
         ring.pack(side="left", padx=24, pady=18)
         ring.create_oval(14, 14, 136, 136, outline=P.track, width=12)
         if pct:
-            ring.create_arc(14, 14, 136, 136, start=90, extent=-3.6 * min(pct, 99.99), style="arc",
-                            outline=color, width=12)
+            ring.create_arc(
+                14, 14, 136, 136, start=90, extent=-3.6 * min(pct, 99.99), style="arc", outline=color, width=12
+            )
         ring.create_text(75, 75, text=f"{pct}%", fill=P.text, font=f["title"])
 
         info = tk.Frame(head, bg=P.surface)
@@ -750,17 +812,18 @@ class ResultsView(tk.Frame):
         chips = tk.Frame(info, bg=P.surface)
         chips.pack(anchor="w")
         badge(chips, f"✔  {t('chip_right', n=right)}", fg=P.ok, bg=P.ok_bg, font=f["bold"]).pack(side="left")
-        badge(chips, f"✘  {t('chip_wrong', n=wrong)}", fg=P.bad, bg=P.bad_bg, font=f["bold"]).pack(
-            side="left", padx=8)
+        badge(chips, f"✘  {t('chip_wrong', n=wrong)}", fg=P.bad, bg=P.bad_bg, font=f["bold"]).pack(side="left", padx=8)
         if skipped:
             badge(chips, f"⤼  {t('chip_skipped', n=skipped)}", fg=P.muted, bg=P.surface2, font=f["bold"]).pack(
-                side="left")
+                side="left"
+            )
 
         body = card(self)
         body.pack(fill="both", expand=True, padx=PAD, pady=(0, 12))
         mistakes = session.mistakes
-        label(body, t("mistakes_title", n=len(mistakes)) if mistakes else t("no_mistakes"), font=f["h2"],
-              bg=P.surface).pack(fill="x", padx=18, pady=(14, 0))
+        label(
+            body, t("mistakes_title", n=len(mistakes)) if mistakes else t("no_mistakes"), font=f["h2"], bg=P.surface
+        ).pack(fill="x", padx=18, pady=(14, 0))
         if not mistakes:
             return
         text = tk.Text(body, wrap="word", cursor="arrow")
@@ -785,8 +848,9 @@ class ResultsView(tk.Frame):
         questions = [i.question for i in self.session.mistakes]
         random.shuffle(questions)
         s = self.app.store.settings
-        self.app.start_session(Session.create(self.session.deck_id, questions, s["shuffle_options"]),
-                               s["instant_feedback"])
+        self.app.start_session(
+            Session.create(self.session.deck_id, questions, s["shuffle_options"]), s["instant_feedback"]
+        )
 
 
 # ====================================================================
@@ -852,10 +916,12 @@ class SetupDialog(_Modal):
         ttk.Spinbox(row, from_=1, to=n, textvariable=self.count, width=6).pack(side="left")
         for value in (10, 30, 50):
             if value < n:
-                ttk.Button(row, text=str(value), style="Chip.TButton", width=0,
-                           command=lambda v=value: self.count.set(v)).pack(side="left", padx=(8, 0))
-        ttk.Button(row, text=t("all_n", n=n), style="Chip.TButton", width=0,
-                   command=lambda: self.count.set(n)).pack(side="left", padx=(8, 0))
+                ttk.Button(
+                    row, text=str(value), style="Chip.TButton", width=0, command=lambda v=value: self.count.set(v)
+                ).pack(side="left", padx=(8, 0))
+        ttk.Button(row, text=t("all_n", n=n), style="Chip.TButton", width=0, command=lambda: self.count.set(n)).pack(
+            side="left", padx=(8, 0)
+        )
 
         self.section(t("range"))
         rng = tk.Frame(self.frame, bg=P.surface)
@@ -923,8 +989,9 @@ class GenerateChoiceDialog(_Modal):
         super().__init__(app, t("not_bank_title"), heading=t("not_bank_title"))
         label(self.frame, t("not_bank_body"), fg=P.muted, wraplength=460).pack(fill="x", pady=(0, 12))
         for key, desc, value in (("gen_offline", "gen_offline_desc", "offline"), ("gen_ai", "gen_ai_desc", "ai")):
-            opt = OptionRow(self.frame, app, 1 if value == "offline" else 2, f"{t(key)}\n{t(desc)}",
-                            lambda v=value: self.pick(v))
+            opt = OptionRow(
+                self.frame, app, 1 if value == "offline" else 2, f"{t(key)}\n{t(desc)}", lambda v=value: self.pick(v)
+            )
             opt.text.configure(wraplength=420)
             opt.pack(fill="x", pady=4)
         bar = tk.Frame(self.frame, bg=P.surface)
@@ -967,15 +1034,15 @@ class SettingsDialog(_Modal):
         row(3, "default_count", ttk.Spinbox(grid, from_=5, to=500, textvariable=self.count, width=6))
 
         label(grid, t("ai_section").upper(), font=app.fonts["small"], fg=P.muted).grid(
-            row=4, column=0, columnspan=2, sticky="w", pady=(20, 4))
+            row=4, column=0, columnspan=2, sticky="w", pady=(20, 4)
+        )
         self.key = ttk.Entry(grid, width=36, show="•")
         self.key.insert(0, s.get("api_key", ""))
         row(5, "api_key", self.key)
         self.model = ttk.Combobox(grid, values=ai.MODELS, width=22)
         self.model.set(s.get("ai_model", ai.DEFAULT_MODEL))
         row(6, "ai_model", self.model)
-        label(self.frame, t("ai_note"), font=app.fonts["small"], fg=P.muted, wraplength=480).pack(
-            fill="x", pady=(8, 0))
+        label(self.frame, t("ai_note"), font=app.fonts["small"], fg=P.muted, wraplength=480).pack(fill="x", pady=(8, 0))
 
         self.footer(t("save"), self.save)
         self.run()
@@ -992,8 +1059,14 @@ class SettingsDialog(_Modal):
             count = s["default_count"]
         mode = next(k for k, v in self.themes.items() if v == self.theme.get())
         lang = next(k for k, v in LANGUAGES.items() if v == self.lang.get())
-        s.update(font_size=size, default_count=count, api_key=self.key.get().strip(), theme=mode,
-                 ai_model=self.model.get().strip() or ai.DEFAULT_MODEL, lang=lang)
+        s.update(
+            font_size=size,
+            default_count=count,
+            api_key=self.key.get().strip(),
+            theme=mode,
+            ai_model=self.model.get().strip() or ai.DEFAULT_MODEL,
+            lang=lang,
+        )
         self.app.store.save_settings()
         self.destroy()
         set_language(lang)
@@ -1074,8 +1147,7 @@ class TaskDialog(_Modal):
         self._cancel = threading.Event()
         self.status = label(self.frame, fg=P.muted, width=44)
         self.status.pack(fill="x", pady=(0, 8))
-        self.bar = ttk.Progressbar(self.frame, style="Accent.Horizontal.TProgressbar", length=380,
-                                   mode="indeterminate")
+        self.bar = ttk.Progressbar(self.frame, style="Accent.Horizontal.TProgressbar", length=380, mode="indeterminate")
         self.bar.pack(fill="x")
         self.bar.start(12)
         if cancellable:

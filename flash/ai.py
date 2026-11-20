@@ -4,6 +4,7 @@ Used for plain study text (not ready-made test banks). The heavy work runs on
 Anthropic's servers, so a weak PC is fine - only internet and an API key are
 needed. Everything else in FlasH works offline.
 """
+
 from __future__ import annotations
 
 import json

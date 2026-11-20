@@ -14,13 +14,16 @@ class FakeMessages:
         self.calls.append(kwargs)
         payload = {
             "questions": [
-                {"question": "Що синтезується?", "options": ["A", "B", "C", "D", "E"],
-                 "correct_index": 2, "explanation": "Бо C."},
+                {
+                    "question": "Що синтезується?",
+                    "options": ["A", "B", "C", "D", "E"],
+                    "correct_index": 2,
+                    "explanation": "Бо C.",
+                },
                 {"question": "Bad", "options": ["only one"], "correct_index": 0, "explanation": ""},
             ]
         }
-        return SimpleNamespace(stop_reason="end_turn",
-                               content=[SimpleNamespace(type="text", text=json.dumps(payload))])
+        return SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=json.dumps(payload))])
 
 
 @unittest.skipUnless(ai.is_available(), "anthropic not installed")

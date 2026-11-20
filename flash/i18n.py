@@ -1,4 +1,5 @@
 """User interface strings: Ukrainian (default) and English."""
+
 from __future__ import annotations
 
 LANGUAGES = {"uk": "Українська", "en": "English"}

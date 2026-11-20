@@ -1,4 +1,5 @@
 """Local storage: decks, progress and settings as JSON in %APPDATA%\\FlasH."""
+
 from __future__ import annotations
 
 import json
