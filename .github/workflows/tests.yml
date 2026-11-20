@@ -13,6 +13,24 @@ permissions:
   contents: read
 
 jobs:
+  # Runs in parallel with the tests. Rules are set in pyproject.toml.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      # Pinned so a new ruff release can't start failing CI on its own.
+      - name: Install ruff
+        run: python -m pip install ruff==0.17.6
+
+      - name: Run ruff
+        run: ruff check --output-format=github .
+
   test:
     name: ${{ matrix.os }} · Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
