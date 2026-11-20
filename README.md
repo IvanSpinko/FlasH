@@ -37,7 +37,7 @@ build.bat
 ### Обмеження
 
 - Скановані PDF (лише зображення, без тексту) поки не підтримуються, бо для них потрібне розпізнавання тексту (OCR).
-- Наразі підтримуються формати PDF, TXT і MD. Інші формати можна додати в `flash/extract.py`.
+- Наразі підтримуються формати PDF, TXT і MD. Інші формати можна додати в `flash/core/extract.py`.
 
 ---
 
@@ -59,17 +59,45 @@ Run from source with `py -m pip install -r requirements.txt` and `py run_flash.p
 
 ## Project layout
 
+Every screen talks to FlasH through `FlashService`. The desktop app calls it directly, so it works offline; the web API reuses the same service.
+
 ```
 flash/
-  extract.py    PDF/TXT -> lines (PyMuPDF, falls back to pypdf)
-  parser.py     test-bank parser (stems, wrapped options, page breaks)
-  generator.py  offline question generator for plain text
-  ai.py         optional Claude-based generator (structured JSON output)
-  importer.py   file -> questions pipeline
-  quiz.py       question selection + test session logic
-  storage.py    JSON storage in %APPDATA%\FlasH
-  theme.py      light/dark palettes and ttk styling
-  i18n.py       UA/EN strings
-  ui.py         Tkinter interface
-tests/          unit tests: py -m unittest discover -s tests -t .
+  service.py        FlashService: the one entry point to the logic (no UI code)
+  core/             the logic, no UI and no storage
+    model.py          Question and Deck
+    extract.py        PDF/TXT/MD -> lines (PyMuPDF, falls back to pypdf)
+    parser.py         test-bank parser (stems, wrapped options, page breaks)
+    generator.py      offline question generator for plain text
+    ai.py             optional Claude-based generator (structured JSON output)
+    importer.py       file -> questions pipeline
+    quiz.py           question selection + test session logic
+  storage/          where decks, progress and settings are kept
+    base.py           Repository: what any storage must provide
+    json_store.py     JsonStore: JSON files in %APPDATA%\FlasH (~/FlasH on macOS/Linux)
+  desktop/          Tkinter app
+    app.py            main window and import flow
+    library_view.py   deck list
+    quiz_view.py      test screen
+    results_view.py   results and mistakes
+    dialogs.py        setup, rename, settings, offline/AI choice, browse, progress
+    widgets.py        shared building blocks
+    theme.py          light/dark palettes and ttk styling
+    i18n.py           UA/EN strings
+  api/              optional web API (FastAPI) for a future website or phone app
+    app.py
+tests/              unit tests: py -m unittest discover -s tests -t .
 ```
+
+## Web API (optional)
+
+The web API is a separate way to use FlasH's logic over HTTP, for example from a website or a phone app. The desktop app doesn't need it.
+
+```bash
+docker build -t flash-api .
+docker run -p 8000:8000 -v flash-data:/data flash-api
+```
+
+Then open http://localhost:8000/docs to try it. Without Docker: `pip install -r requirements-api.txt` and `uvicorn flash.api.app:create_app --factory`.
+
+This first version has no user accounts, keeps running tests in memory, and doesn't offer AI generation.
