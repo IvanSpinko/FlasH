@@ -61,6 +61,8 @@ Run from source with `py -m pip install -r requirements.txt` and `py run_flash.p
 
 Every screen talks to FlasH through `FlashService`. The desktop app calls it directly, so it works offline; the web API reuses the same service.
 
+Diagrams of how the parts fit together are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ```
 flash/
   service.py        FlashService: the one entry point to the logic (no UI code)
