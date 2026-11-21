@@ -235,14 +235,20 @@ _lang = "uk"
 
 
 def set_language(lang: str) -> None:
+    """Use ``"uk"`` or ``"en"`` for all text from now on (anything else falls back to Ukrainian)."""
     global _lang
     _lang = lang if lang in STRINGS else "uk"
 
 
 def get_language() -> str:
+    """The language in use."""
     return _lang
 
 
 def t(key: str, **kwargs) -> str:
+    """The text for ``key`` in the current language, with ``{placeholders}`` filled from ``kwargs``.
+
+    Falls back to English, then to the key itself.
+    """
     text = STRINGS[_lang].get(key) or STRINGS["en"].get(key) or key
     return text.format(**kwargs) if kwargs else text

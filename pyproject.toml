@@ -5,8 +5,30 @@ target-version = "py310" # oldest Python FlasH supports
 line-length = 120 # the code already uses lines of up to ~120 characters
 
 [tool.ruff.lint]
-# Only checks that point at real bugs, not style:
+# Checks that point at real bugs, plus documentation:
 #   E9 - syntax errors
 #   F  - Pyflakes: undefined names, unused imports and variables
 #   B  - flake8-bugbear: likely bugs, such as duplicate items in a set
-select = ["E9", "F", "B"]
+#   D1 - every public module, class, method and function has a docstring
+select = ["E9", "F", "B", "D1"]
+ignore = [
+    "D105", # magic methods like __len__ explain themselves
+    "D107", # __init__ is described in the class docstring
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test names say what they check.
+"tests/**" = ["D1"]
+
+[tool.coverage.run]
+source = ["flash"]
+omit = [
+    "flash/desktop/*", # the window is tested end to end (tests/e2e), not line by line
+    "flash/__main__.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# CI fails if the share of tested lines drops below this. Raise it as tests are added.
+fail_under = 90

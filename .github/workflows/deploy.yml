@@ -1,0 +1,81 @@
+# Update the web version on your server. Started by hand: Actions → Deploy → Run workflow.
+# The server is set up once by hand first; see docs/DEPLOYMENT.md.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST         the server's IP address or name
+#   DEPLOY_USER         the login on the server, e.g. ubuntu
+#   DEPLOY_SSH_KEY      a private SSH key allowed to log in (its public key is in the server's ~/.ssh/authorized_keys)
+#   DEPLOY_KNOWN_HOSTS  the server's host key, from:  ssh-keyscan <server IP>
+# Optional repository variables:
+#   DEPLOY_PATH         where FlasH is cloned on the server, relative to the home folder (default: FlasH)
+#   FLASH_URL           the site's address, e.g. https://flash.example.com, to check it answers afterwards
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to deploy
+        default: main
+
+# One deploy at a time; a second one waits instead of cancelling the first halfway.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to the server
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      BRANCH: ${{ inputs.branch }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || 'FlasH' }}
+    steps:
+      - name: Check the settings
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER_NAME: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          missing=0
+          for name in HOST USER_NAME KEY KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then echo "::error::A deploy secret is missing ($name); see the top of deploy.yml"; missing=1; fi
+          done
+          if ! [[ "$BRANCH" =~ ^[A-Za-z0-9._/-]+$ && "$DEPLOY_PATH" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::The branch or DEPLOY_PATH contains unexpected characters"; missing=1
+          fi
+          exit "$missing"
+
+      - name: Set up SSH
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Only this server is trusted, so a fake one can't pretend to be it.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Pull the code and restart the containers
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER_NAME: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$USER_NAME@$HOST" "$DEPLOY_PATH/deploy/update.sh $BRANCH"
+
+      - name: Check the site answers
+        if: ${{ vars.FLASH_URL != '' }}
+        env:
+          FLASH_URL: ${{ vars.FLASH_URL }}
+        run: curl -sf --retry 10 --retry-delay 3 --retry-all-errors "$FLASH_URL/api/health"
+
+      - name: Remove the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

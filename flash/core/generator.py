@@ -52,6 +52,7 @@ BLANK = "_____"
 
 
 def detect_language(text: str) -> str:
+    """Guess whether ``text`` is Ukrainian or English: ``"uk"`` or ``"en"``."""
     cyr = sum(1 for c in text[:20000] if "а" <= c.lower() <= "я" or c in "іїєґІЇЄҐ")
     lat = sum(1 for c in text[:20000] if "a" <= c.lower() <= "z")
     return "uk" if cyr >= lat else "en"
@@ -76,6 +77,7 @@ def lines_to_text(lines: list[str]) -> str:
 
 
 def split_sentences(text: str) -> list[str]:
+    """Split text into sentences, keeping only those long enough to ask about (30-300 characters)."""
     out = []
     for para in text.split("\n"):
         for s in _SENT_SPLIT.split(para):
@@ -99,6 +101,11 @@ def _suffix(word: str, n: int = 2) -> str:
 
 
 def generate_questions(lines: list[str], limit: int = 300, seed: int | None = None) -> list[Question]:
+    """Make questions from plain notes without internet: definition and fill-in-the-blank questions.
+
+    At most ``limit`` questions; ``seed`` makes the result repeatable. Returns an empty list when
+    the text has too little to work with.
+    """
     rng = random.Random(seed)
     text = lines_to_text(lines)
     lang = detect_language(text)

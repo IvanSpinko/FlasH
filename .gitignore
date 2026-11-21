@@ -11,3 +11,13 @@ venv/
 *.pdf
 samples/
 node_modules/
+
+# Test coverage data
+.coverage
+
+# Browser test output (frontend)
+test-results/
+playwright-report/
+
+# Server settings and secrets (see .env.example)
+.env

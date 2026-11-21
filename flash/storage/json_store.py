@@ -17,6 +17,7 @@ from ..core.model import Deck
 
 
 def data_dir() -> str:
+    """The data folder (``FLASH_DATA_DIR``, else ``%APPDATA%\\FlasH`` or ``~/FlasH``), created if missing."""
     base = os.environ.get("FLASH_DATA_DIR")
     if not base:
         base = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "FlasH")
@@ -66,6 +67,7 @@ class JsonStore:
 
     # settings ---------------------------------------------------------
     def save_settings(self) -> None:
+        """Write the settings to ``settings.json``."""
         _write_json(self._settings_path, self.settings)
 
     # decks ------------------------------------------------------------
@@ -73,6 +75,7 @@ class JsonStore:
         return os.path.join(self.root, "decks", f"{deck_id}.json")
 
     def list_decks(self) -> list[Deck]:
+        """All decks in the ``decks`` folder, newest first. Unreadable files are skipped."""
         decks = []
         folder = os.path.join(self.root, "decks")
         for name in os.listdir(folder):
@@ -84,10 +87,12 @@ class JsonStore:
         return decks
 
     def load_deck(self, deck_id: str) -> Deck | None:
+        """The deck with this id, or None if its file is missing or unreadable."""
         d = _read_json(self._deck_path(deck_id), None)
         return Deck.from_dict(d) if d else None
 
     def create_deck(self, name: str, source: str, kind: str, questions) -> Deck:
+        """Save new questions as a deck with a random id; questions are numbered from 1."""
         deck = Deck(
             id=uuid.uuid4().hex[:12],
             name=name,
@@ -102,9 +107,11 @@ class JsonStore:
         return deck
 
     def save_deck(self, deck: Deck) -> None:
+        """Write the deck to ``decks/<id>.json``."""
         _write_json(self._deck_path(deck.id), deck.to_dict())
 
     def delete_deck(self, deck_id: str) -> None:
+        """Delete the deck's file and its progress. Deleting a missing deck does nothing."""
         try:
             os.remove(self._deck_path(deck_id))
         except FileNotFoundError:
@@ -114,9 +121,11 @@ class JsonStore:
 
     # progress ---------------------------------------------------------
     def stats(self, deck_id: str) -> dict[str, dict]:
+        """Per-question counters for a deck (created empty if the deck has none yet)."""
         return self.progress.setdefault(deck_id, {})
 
     def record(self, deck_id: str, qid: str, correct: bool) -> None:
+        """Count one answer: seen, right or wrong, the streak of right answers, and when."""
         s = self.stats(deck_id).setdefault(qid, {"seen": 0, "right": 0, "wrong": 0, "streak": 0})
         s["seen"] += 1
         if correct:
@@ -128,13 +137,16 @@ class JsonStore:
         s["last"] = int(time.time())
 
     def reset_progress(self, deck_id: str) -> None:
+        """Forget all answers for a deck and save."""
         self.progress[deck_id] = {}
         self.save_progress()
 
     def save_progress(self) -> None:
+        """Write all progress to ``progress.json``."""
         _write_json(self._progress_path, self.progress)
 
     def summary(self, deck: Deck) -> dict:
+        """Counts for a deck: ``{"total", "seen", "learned", "weak"}`` (learned = right 2+ times in a row)."""
         st = self.progress.get(deck.id, {})
         total = len(deck.questions)
         seen = sum(1 for q in deck.questions if q.id in st)

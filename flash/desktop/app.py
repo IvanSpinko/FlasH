@@ -31,6 +31,8 @@ def _enable_dpi_awareness() -> None:
 
 
 class App(tk.Tk):
+    """The FlasH desktop window. It shows one screen at a time and does all its work through FlashService."""
+
     def __init__(self, service: FlashService | None = None):
         _enable_dpi_awareness()
         super().__init__()
@@ -75,6 +77,7 @@ class App(tk.Tk):
     }
 
     def apply_font_size(self, size: int, restyle: bool = True):
+        """Resize all fonts to ``size`` points; ``restyle`` redraws the window right away."""
         for name, (delta, weight) in self._FONT_SPEC.items():
             self.fonts[name].configure(size=max(size + delta, 8), weight=weight)
         if restyle:
@@ -101,18 +104,22 @@ class App(tk.Tk):
 
     # ----------------------------------------------------------- theme / language
     def refresh_theme(self):
+        """Re-apply the colours and rebuild the current screen (after a theme or font change)."""
         theme.apply(self, self.service.settings.get("theme", "system"), self.fonts)
         self._build_header()
         self._rebuild()
 
     def set_theme(self, mode: str):
+        """Switch to ``"light"``, ``"dark"`` or ``"system"`` and remember the choice."""
         self.service.update_settings(theme=mode)
         self.refresh_theme()
 
     def toggle_theme(self):
+        """Switch between light and dark."""
         self.set_theme("light" if P.name == "dark" else "dark")
 
     def change_language(self, code: str):
+        """Switch the interface language (``"uk"`` or ``"en"``) and remember it."""
         self.service.update_settings(lang=code)
         set_language(code)
         self._build_header()
@@ -155,6 +162,7 @@ class App(tk.Tk):
 
     # ----------------------------------------------------------- views
     def on_close(self):
+        """Save progress and close the window."""
         self.service.save_progress()
         self.destroy()
 
@@ -171,16 +179,20 @@ class App(tk.Tk):
             self._show(self._factory)
 
     def show_library(self):
+        """Show the list of decks."""
         self._show(lambda: LibraryView(self.body, self))
 
     def start_session(self, session: Session, instant_feedback: bool):
+        """Show a test. With ``instant_feedback``, each answer is marked right or wrong straight away."""
         self._show(lambda: QuizView(self.body, self, session, instant_feedback))
 
     def show_results(self, session: Session):
+        """Show the score and mistakes of a finished (or stopped) test."""
         self._show(lambda: ResultsView(self.body, self, session))
 
     # ----------------------------------------------------------- dialogs
     def open_settings(self):
+        """Open the settings dialog."""
         SettingsDialog(self)
 
     def run_task(self, title: str, func, on_done, cancellable: bool = False):
@@ -189,6 +201,7 @@ class App(tk.Tk):
 
     # ----------------------------------------------------------- import
     def import_file(self):
+        """Ask for a file and import it: a test collection directly, notes after asking offline or AI."""
         exts = " ".join(f"*{e}" for e in SUPPORTED_EXTENSIONS)
         path = filedialog.askopenfilename(
             parent=self,
@@ -268,4 +281,5 @@ class App(tk.Tk):
 
 
 def main():
+    """Start the desktop app and wait until its window is closed."""
     App().mainloop()

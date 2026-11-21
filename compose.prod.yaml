@@ -1,0 +1,43 @@
+# Production: the same two containers, behind Caddy for HTTPS and a password.
+#   cp .env.example .env        # then fill it in
+#   docker compose -f compose.yaml -f compose.prod.yaml up -d --build
+# Needs Docker Compose 2.24 or newer (for "!reset"). Full guide: docs/DEPLOYMENT.md.
+
+x-logging: &logging
+  # Without a limit, container logs grow until the disk is full.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  api:
+    logging: *logging
+
+  web:
+    ports: !reset []  # only Caddy is reachable from the internet
+    logging: *logging
+
+  caddy:
+    image: caddy:2.10-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    environment:
+      FLASH_DOMAIN: ${FLASH_DOMAIN:?set FLASH_DOMAIN in .env}
+      FLASH_USER: ${FLASH_USER:?set FLASH_USER in .env}
+      FLASH_PASSWORD_HASH: ${FLASH_PASSWORD_HASH:?set FLASH_PASSWORD_HASH in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data  # certificates: keep them, or Let's Encrypt may rate-limit new ones
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  caddy-data:
+  caddy-config:

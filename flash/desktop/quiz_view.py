@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 
 class QuizView(tk.Frame):
+    """A test in progress: one question at a time, answered by click or keys 1-9."""
+
     def __init__(self, master, app: App, session: Session, instant_feedback: bool):
         super().__init__(master, bg=P.bg)
         self.app = app
@@ -65,6 +67,7 @@ class QuizView(tk.Frame):
         self.render()
 
     def destroy(self):
+        """Stop listening to the keyboard and remove the screen."""
         try:
             self.app.unbind("<Key>")
         except tk.TclError:
@@ -92,6 +95,7 @@ class QuizView(tk.Frame):
             self.hint.configure(text=t("keys_hint", n=len(s.current.options)))
 
     def render(self):
+        """Show the current question, or the results when the test is over."""
         item = self.session.current
         if item is None:
             self.app.show_results(self.session)
@@ -119,6 +123,7 @@ class QuizView(tk.Frame):
         self.expl.configure(text="", bg=P.surface)
 
     def choose(self, pos: int):
+        """Answer with the option shown at ``pos``; ignored if the question was already answered."""
         item = self.session.current
         if item is None or item.chosen is not None:
             return
@@ -156,10 +161,12 @@ class QuizView(tk.Frame):
         self.after(30, lambda: self.winfo_exists() and self.scroll.show_widget(self.banner))
 
     def go_next(self):
+        """Move on to the next question."""
         self.session.next()
         self.render()
 
     def quit_test(self):
+        """Stop the test: back to the library if nothing was answered, else (after confirming) to the results."""
         if not self.session.answered:
             self.app.show_library()
         elif messagebox.askyesno(APP_NAME, t("confirm_quit"), parent=self.app):

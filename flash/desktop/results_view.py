@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 
 class ResultsView(tk.Frame):
+    """The end of a test: score, grade, and every mistake with the right answer."""
+
     def __init__(self, master, app: App, session: Session):
         super().__init__(master, bg=P.bg)
         self.app = app
@@ -88,5 +90,6 @@ class ResultsView(tk.Frame):
         text.configure(state="disabled")
 
     def retry(self):
+        """Start a new test with only the questions answered wrong."""
         session = self.app.service.retry_mistakes(self.session)
         self.app.start_session(session, self.app.service.settings["instant_feedback"])

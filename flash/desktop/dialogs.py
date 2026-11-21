@@ -63,6 +63,11 @@ class _Modal(tk.Toplevel):
 
 
 class SetupDialog(_Modal):
+    """Test options before a test starts: mode, number of questions, range, shuffling, feedback.
+
+    After it closes, ``result`` is a dict of the choices, or None if cancelled.
+    """
+
     def __init__(self, app: App, deck):
         super().__init__(app, t("setup_title"), heading=deck.name)
         s = app.service.settings
@@ -108,6 +113,8 @@ class SetupDialog(_Modal):
         self.run()
 
     def ok(self):
+        """Check the numbers, keep the choices in ``result``, remember shuffle/feedback, and close."""
+
         def val(var, default):
             try:
                 return int(var.get())
@@ -131,6 +138,8 @@ class SetupDialog(_Modal):
 
 
 class RenameDialog(_Modal):
+    """Ask for a deck's new name; ``result`` is the name, or None if cancelled."""
+
     def __init__(self, app: App, current: str):
         super().__init__(app, t("rename"), heading=t("rename"))
         self.entry = ttk.Entry(self.frame, width=44)
@@ -142,6 +151,7 @@ class RenameDialog(_Modal):
         self.run()
 
     def ok(self):
+        """Accept the name if it isn't empty and close."""
         name = self.entry.get().strip()
         if name:
             self.result = name
@@ -149,6 +159,11 @@ class RenameDialog(_Modal):
 
 
 class GenerateChoiceDialog(_Modal):
+    """For a file that isn't a test collection: make questions offline or with AI.
+
+    ``result`` is ``"offline"``, ``"ai"``, or None if cancelled.
+    """
+
     def __init__(self, app: App):
         super().__init__(app, t("not_bank_title"), heading=t("not_bank_title"))
         label(self.frame, t("not_bank_body"), fg=P.muted, wraplength=460).pack(fill="x", pady=(0, 12))
@@ -166,11 +181,14 @@ class GenerateChoiceDialog(_Modal):
         self.run()
 
     def pick(self, value):
+        """Choose ``"offline"`` or ``"ai"`` and close."""
         self.result = value
         self.destroy()
 
 
 class SettingsDialog(_Modal):
+    """Settings: language, theme, font size, test defaults, and the AI key and model."""
+
     def __init__(self, app: App):
         super().__init__(app, t("settings"), heading=t("settings"))
         s = app.service.settings
@@ -212,6 +230,7 @@ class SettingsDialog(_Modal):
         self.run()
 
     def save(self):
+        """Save the settings, apply them to the window, and close."""
         s = self.app.service.settings
         try:
             size = min(max(int(self.font_size.get()), 9), 24)
@@ -237,6 +256,8 @@ class SettingsDialog(_Modal):
 
 
 class BrowseWindow(tk.Toplevel):
+    """A window listing every question of a deck with its answer, with a search box."""
+
     def __init__(self, app: App, deck):
         super().__init__(app)
         self.app = app
@@ -271,6 +292,7 @@ class BrowseWindow(tk.Toplevel):
         theme.style_titlebar(self)
 
     def fill(self):
+        """Show the questions that match the search text (all of them when it is empty)."""
         q = self.query.get().strip().lower()
         self.text.configure(state="normal")
         self.text.delete("1.0", "end")

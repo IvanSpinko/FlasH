@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, type Deck, type TestState } from "./api";
 import { errorText } from "./errors";
 import { I18n, initialLang, makeT, saveLang, type Lang } from "./i18n";
@@ -19,10 +19,14 @@ export function App() {
   const [view, setView] = useState<View>({ name: "library" });
   const [practiseError, setPractiseError] = useState("");
 
+  // Screen readers and spell checkers use the page's language.
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
+
   const switchLang = (next: Lang) => {
     setLang(next);
     saveLang(next);
-    document.documentElement.lang = next;
   };
 
   const practiseMistakes = async (deck: Deck) => {

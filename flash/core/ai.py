@@ -61,10 +61,13 @@ _PROMPT = {
 
 
 class AIError(Exception):
+    """AI generation failed. The message is a short code ("auth", "rate_limit", "network") or the API's error."""
+
     pass
 
 
 def is_available() -> bool:
+    """True if the ``anthropic`` package is installed, so AI generation can run."""
     try:
         import anthropic  # noqa: F401
     except ImportError:
@@ -73,6 +76,10 @@ def is_available() -> bool:
 
 
 def chunk_text(text: str, size: int = CHUNK_CHARS) -> list[str]:
+    """Split ``text`` into pieces of at most ``size`` characters at paragraph breaks.
+
+    A single paragraph longer than ``size`` is kept whole.
+    """
     chunks, cur, cur_len = [], [], 0
     for para in text.split("\n"):
         if cur_len + len(para) > size and cur:
@@ -93,6 +100,13 @@ def generate_questions(
     progress=None,
     cancelled=lambda: False,
 ) -> list[Question]:
+    """Make multiple-choice questions from study text with Claude, one request per chunk of text.
+
+    The prompt follows the text's language (Ukrainian or English). Questions with fewer than three
+    options or a bad answer index are dropped; the correct option is moved to the front.
+    ``progress(done, total)`` is called after each chunk and ``cancelled()`` is checked before each one.
+    Raises :class:`AIError` if the package is missing or the API fails.
+    """
     try:
         import anthropic
     except ImportError as e:
@@ -141,6 +155,8 @@ def generate_questions(
         try:
             data = json.loads(payload)
         except json.JSONDecodeError:
+            if progress:
+                progress(i + 1, len(chunks))
             continue
         for item in data.get("questions", []):
             opts = [o.strip() for o in item.get("options", []) if o.strip()]
