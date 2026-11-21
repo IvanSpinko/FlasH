@@ -20,3 +20,15 @@ ignore = [
 # Test names say what they check.
 "tests/**" = ["D1"]
 
+[tool.coverage.run]
+source = ["flash"]
+omit = [
+    "flash/desktop/*", # the window is tested end to end (tests/e2e), not line by line
+    "flash/__main__.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# CI fails if the share of tested lines drops below this. Raise it as tests are added.
+fail_under = 90

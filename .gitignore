@@ -11,3 +11,6 @@ venv/
 *.pdf
 samples/
 node_modules/
+
+# Test coverage data
+.coverage
