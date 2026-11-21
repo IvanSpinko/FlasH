@@ -23,6 +23,11 @@ from .storage import JsonStore, Repository
 
 
 class FlashService:
+    """Everything FlasH can do, for any front end: the desktop app, the web API or tests.
+
+    ``store`` is any :class:`~flash.storage.Repository`; JSON files in the data folder by default.
+    """
+
     def __init__(self, store: Repository | None = None):
         # JSON files on this computer by default; any Repository can be passed in.
         self.store = store if store is not None else JsonStore()
@@ -30,17 +35,21 @@ class FlashService:
     # ----------------------------------------------------------- settings
     @property
     def settings(self) -> dict:
+        """The user's settings (language, theme, font size, AI key and model, ...)."""
         return self.store.settings
 
     def update_settings(self, **changes) -> None:
+        """Change some settings and save them, e.g. ``update_settings(lang="en")``."""
         self.store.settings.update(changes)
         self.store.save_settings()
 
     # ----------------------------------------------------------- library
     def list_decks(self) -> list[Deck]:
+        """All decks, newest first."""
         return self.store.list_decks()
 
     def get_deck(self, deck_id: str) -> Deck | None:
+        """The deck with this id, or None."""
         return self.store.load_deck(deck_id)
 
     def deck_summary(self, deck: Deck) -> dict:
@@ -48,13 +57,16 @@ class FlashService:
         return self.store.summary(deck)
 
     def rename_deck(self, deck: Deck, name: str) -> None:
+        """Give a deck a new name and save it."""
         deck.name = name
         self.store.save_deck(deck)
 
     def reset_progress(self, deck_id: str) -> None:
+        """Forget every answer given for a deck."""
         self.store.reset_progress(deck_id)
 
     def delete_deck(self, deck_id: str) -> None:
+        """Delete a deck and its progress."""
         self.store.delete_deck(deck_id)
 
     # ----------------------------------------------------------- importing
@@ -70,6 +82,7 @@ class FlashService:
         return generator.generate_questions(result.lines)
 
     def ai_key(self) -> str:
+        """The Anthropic API key: from the settings, else ``ANTHROPIC_API_KEY``; empty if neither is set."""
         return self.settings.get("api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
 
     def ai_problem(self) -> str | None:
@@ -122,4 +135,5 @@ class FlashService:
         return Session.create(session.deck_id, questions, self.settings["shuffle_options"])
 
     def save_progress(self) -> None:
+        """Write the recorded answers to storage. Call it after answering, or before closing."""
         self.store.save_progress()

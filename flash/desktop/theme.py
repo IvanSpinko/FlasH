@@ -67,6 +67,7 @@ P = Palette(LIGHT, name="light")
 
 
 def system_prefers_dark() -> bool:
+    """True if Windows is set to dark mode for apps. Always False on other systems for now."""
     if sys.platform != "win32":
         return False
     try:
@@ -80,6 +81,7 @@ def system_prefers_dark() -> bool:
 
 
 def resolve(mode: str) -> str:
+    """Turn a theme setting into ``"light"`` or ``"dark"`` (``"system"`` follows the computer)."""
     if mode == "system":
         return "dark" if system_prefers_dark() else "light"
     return mode if mode in ("light", "dark") else "light"
@@ -106,6 +108,7 @@ def style_titlebar(window: tk.Misc) -> None:
 
 
 def apply(root: tk.Tk, mode: str, fonts: dict) -> None:
+    """Switch the palette :data:`P` to ``mode`` and restyle the window, its widgets and ``fonts``."""
     P.clear()
     name = resolve(mode)
     P.update(DARK if name == "dark" else LIGHT, name=name)

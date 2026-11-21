@@ -58,6 +58,7 @@ def _join(prev: str, cur: str) -> str:
 
 
 def merge_wrapped(lines: list[str]) -> list[str]:
+    """Join lines that a PDF broke in the middle of a sentence back together."""
     out: list[str] = []
     for line in lines:
         if out and _is_continuation(out[-1], line):
@@ -166,6 +167,7 @@ def _clean_option(text: str) -> str:
 
 
 def try_parse(lines: list[str], expected: int = 5) -> Question | None:
+    """Read one block of lines as a question with ``expected`` options, or None if it isn't one."""
     lines = [l for l in lines if l]
     if len(lines) < 1 + MIN_OPTIONS:
         return None
@@ -231,6 +233,11 @@ def _split_numbered(block: list[str]) -> list[list[str]]:
 
 
 def parse_question_bank(lines: list[str], expected: int | None = None) -> list[Question]:
+    """Find all questions in the lines of a test collection (Krok-style booklets).
+
+    The first option of each question is taken as correct, as in those booklets, unless an option
+    is marked. ``expected`` is the number of options per question; it is guessed when None.
+    """
     blocks = [p for b in _blocks(lines) for p in _split_numbered(b)]
     if expected is None:
         expected = _guess_option_count(blocks)
@@ -274,6 +281,7 @@ def _guess_option_count(blocks: list[list[str]]) -> int:
 
 
 def looks_like_question_bank(lines: list[str], questions: list[Question]) -> bool:
+    """True if the questions found cover enough of the text to call the file a test collection."""
     if len(questions) < 3:
         return False
     used = sum(1 + len(q.options) for q in questions)

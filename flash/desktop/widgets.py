@@ -16,12 +16,14 @@ PAD = 20
 
 
 def card(parent, **kw) -> tk.Frame:
+    """A white (or dark) panel with a thin border, as used for decks and questions."""
     return tk.Frame(
         parent, bg=P.surface, highlightthickness=1, highlightbackground=P.border, highlightcolor=P.border, **kw
     )
 
 
 def label(parent, text="", font=None, fg=None, bg=None, **kw) -> tk.Label:
+    """A text label in the theme's colours; ``font``, ``fg`` and ``bg`` override them."""
     return tk.Label(
         parent,
         text=text,
@@ -35,10 +37,12 @@ def label(parent, text="", font=None, fg=None, bg=None, **kw) -> tk.Label:
 
 
 def badge(parent, text, fg=None, bg=None, font=None) -> tk.Label:
+    """A small coloured tag, such as the kind of deck."""
     return tk.Label(parent, text=text, fg=fg or P.accent, bg=bg or P.accent_soft, font=font, padx=8, pady=1)
 
 
 def style_text(widget: tk.Text, font) -> None:
+    """Give a Text widget the theme's colours and ``font``."""
     widget.configure(
         bg=P.surface,
         fg=P.text,
@@ -62,6 +66,7 @@ class Bar(tk.Frame):
         self.set(value)
 
     def set(self, value: float, color=None):
+        """Fill the bar to ``value`` (0 to 1), optionally in a new ``color``."""
         if color:
             self.fill.configure(bg=color)
         value = min(max(value, 0.0), 1.0)
@@ -91,6 +96,7 @@ class Toggle(tk.Frame):
         self._draw()
 
     def destroy(self):
+        """Stop watching the variable and remove the widget."""
         try:
             self.var.trace_remove("write", self._trace)
         except tk.TclError:
@@ -185,6 +191,7 @@ class OptionRow(tk.Frame):
             w.bind("<Leave>", lambda e: self.enabled and self.set_state("normal"))
 
     def set_state(self, state: str):
+        """Colour the row: ``"normal"``, ``"hover"``, ``"correct"``, ``"wrong"`` or ``"dim"``."""
         bg, border, badge_bg, badge_fg, fg = {
             "normal": (P.surface, P.border, P.surface2, P.muted, P.text),
             "hover": (P.hover, P.accent, P.accent_soft, P.accent, P.text),
@@ -197,6 +204,7 @@ class OptionRow(tk.Frame):
         self.text.configure(bg=bg, fg=fg)
 
     def disable(self):
+        """Stop reacting to clicks and hovering (after the question was answered)."""
         self.enabled = False
         for w in (self, self.badge, self.text):
             w.configure(cursor="arrow")

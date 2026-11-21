@@ -15,10 +15,17 @@ _PAGE_NUMBER = re.compile(r"^\s*[-–—]?\s*\d{1,4}\s*[-–—]?\s*$")
 
 
 class ExtractionError(Exception):
+    """The file could not be read (unsupported type, damaged or password-protected PDF, unknown encoding)."""
+
     pass
 
 
 def extract_lines(path: str, progress=None) -> list[str]:
+    """Read a PDF, TXT or MD file into a list of cleaned-up lines.
+
+    Empty strings mark paragraph breaks. ``progress(done, total)`` is called after each PDF page.
+    Raises :class:`ExtractionError` when the file can't be read.
+    """
     ext = os.path.splitext(path)[1].lower()
     if ext == ".pdf":
         return _extract_pdf(path, progress)

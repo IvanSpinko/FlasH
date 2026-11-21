@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 
 class LibraryView(tk.Frame):
+    """The home screen: every deck as a card, and a button to import a file."""
+
     def __init__(self, master, app: App):
         super().__init__(master, bg=P.bg)
         self.app = app
@@ -57,6 +59,8 @@ class LibraryView(tk.Frame):
 
 
 class DeckCard(tk.Frame):
+    """One deck in the library: name, kind, progress, and its actions."""
+
     def __init__(self, master, app: App, deck):
         super().__init__(
             master, bg=P.surface, highlightthickness=1, highlightbackground=P.border, highlightcolor=P.border
@@ -98,6 +102,7 @@ class DeckCard(tk.Frame):
                 w.bind("<Double-Button-1>", lambda e: self.start())
 
     def menu(self, anchor):
+        """Show the deck's menu (browse, rename, reset, delete) below ``anchor``."""
         m = tk.Menu(
             self,
             tearoff=0,
@@ -116,6 +121,7 @@ class DeckCard(tk.Frame):
         m.tk_popup(anchor.winfo_rootx(), anchor.winfo_rooty() + anchor.winfo_height())
 
     def start(self):
+        """Ask for test options, then start the test."""
         deck = self.deck
         params = SetupDialog(self.app, deck).result
         if not params:
@@ -134,17 +140,20 @@ class DeckCard(tk.Frame):
         self.app.start_session(session, params["feedback"])
 
     def rename(self):
+        """Ask for a new name and save it."""
         name = RenameDialog(self.app, self.deck.name).result
         if name:
             self.app.service.rename_deck(self.deck, name)
             self.app.show_library()
 
     def reset(self):
+        """After confirming, forget all answers for this deck."""
         if messagebox.askyesno(APP_NAME, t("confirm_reset", name=self.deck.name), parent=self.app):
             self.app.service.reset_progress(self.deck.id)
             self.app.show_library()
 
     def delete(self):
+        """After confirming, delete this deck and its progress."""
         if messagebox.askyesno(APP_NAME, t("confirm_delete", name=self.deck.name), parent=self.app):
             self.app.service.delete_deck(self.deck.id)
             self.app.show_library()
