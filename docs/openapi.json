@@ -1,0 +1,1011 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FlasH API",
+    "summary": "Practice tests from your study files.",
+    "description": "\nImport study files, then take tests on them, one question at a time.\nThe same logic as the FlasH desktop app, which doesn't need this API.\n\n**Typical flow**\n\n1. `POST /decks` with a PDF, TXT or MD file. A test collection is read as is;\n   plain notes are turned into questions offline.\n2. `POST /decks/{deck_id}/tests` to start a test. The response holds the first question.\n3. `POST /tests/{test_id}/answer` with the index of the chosen option.\n   The response says whether it was right and holds the next question.\n\n**Things to know**\n\n- There are no user accounts: everyone using one server shares the same decks.\n  On a public server, protect the whole site with a password (see `docs/DEPLOYMENT.md`).\n- Open tests live in memory. They are lost when the server restarts and forgotten\n  after a few idle hours; answers are saved as progress straight away.\n- AI question generation is not offered here: it would run on the server's API key.\n- Errors come back as `{\"detail\": \"...\"}` with a 4xx status.\n",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Check that the API is up",
+        "description": "Answers as long as the API runs. Used by Docker's health check and uptime monitors.",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/decks": {
+      "get": {
+        "tags": [
+          "decks"
+        ],
+        "summary": "List decks",
+        "description": "Every deck with its progress, newest first.",
+        "operationId": "list_decks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeckOut"
+                  },
+                  "title": "Response List Decks"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "decks"
+        ],
+        "summary": "Import a file as a new deck",
+        "description": "Upload a test collection (its questions are read as they are) or study notes\n(questions are made from them offline). The deck is named after the file.",
+        "operationId": "import_deck",
+        "parameters": [
+          {
+            "name": "generate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "offline",
+                "none"
+              ],
+              "type": "string",
+              "description": "For plain notes: \"offline\" makes questions from them, \"none\" refuses them.",
+              "default": "offline",
+              "title": "Generate"
+            },
+            "description": "For plain notes: \"offline\" makes questions from them, \"none\" refuses them."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_deck"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeckOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The file is larger than the server allows (FLASH_MAX_UPLOAD_MB).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Not a PDF, TXT or MD file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The file can't be read (damaged or password-protected), has no text (a scanned PDF), is plain notes with `generate=none`, has no questions, or the request is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/decks/{deck_id}": {
+      "get": {
+        "tags": [
+          "decks"
+        ],
+        "summary": "Get a deck with its questions",
+        "description": "The deck, its progress, and every question with its correct answer.",
+        "operationId": "get_deck",
+        "parameters": [
+          {
+            "name": "deck_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Deck Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeckDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No deck with this id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "decks"
+        ],
+        "summary": "Delete a deck",
+        "description": "Delete the deck, its progress and its open tests. This can't be undone.",
+        "operationId": "delete_deck",
+        "parameters": [
+          {
+            "name": "deck_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Deck Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No deck with this id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/decks/{deck_id}/tests": {
+      "post": {
+        "tags": [
+          "tests"
+        ],
+        "summary": "Start a test",
+        "description": "Pick questions from the deck. The response holds the first question.\nThe body is optional; without it, all questions are asked in smart order.",
+        "operationId": "start_test",
+        "parameters": [
+          {
+            "name": "deck_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Deck Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/TestRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestState"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No deck with this id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No questions match the selection (for example, no mistakes yet), or the request is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tests/{test_id}": {
+      "get": {
+        "tags": [
+          "tests"
+        ],
+        "summary": "Get a test's state",
+        "description": "The score so far and the question waiting for an answer, for example after reloading the page.",
+        "operationId": "get_test",
+        "parameters": [
+          {
+            "name": "test_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Test Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestState"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No open test with this id: it never existed, expired, or the server restarted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tests/{test_id}/answer": {
+      "post": {
+        "tags": [
+          "tests"
+        ],
+        "summary": "Answer the open question",
+        "description": "Check the answer, save it as progress, and move on to the next question.",
+        "operationId": "answer",
+        "parameters": [
+          {
+            "name": "test_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Test Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No open test with this id: it never existed, expired, or the server restarted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The test is already finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`position` is not one of the shown options, or the request is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnswerRequest": {
+        "properties": {
+          "position": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Position",
+            "description": "Index of the chosen option, as shown in the question."
+          }
+        },
+        "type": "object",
+        "required": [
+          "position"
+        ],
+        "title": "AnswerRequest",
+        "description": "The user's choice for the open question.",
+        "examples": [
+          {
+            "position": 1
+          }
+        ]
+      },
+      "AnswerResult": {
+        "properties": {
+          "correct": {
+            "type": "boolean",
+            "title": "Correct",
+            "description": "The answer was right."
+          },
+          "correct_position": {
+            "type": "integer",
+            "title": "Correct Position",
+            "description": "Index of the right option, as shown in the question."
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "description": "Why that answer is right; empty when the file had no explanation."
+          },
+          "state": {
+            "$ref": "#/components/schemas/TestState"
+          }
+        },
+        "type": "object",
+        "required": [
+          "correct",
+          "correct_position",
+          "explanation",
+          "state"
+        ],
+        "title": "AnswerResult",
+        "description": "Whether the answer was right, and the test's new state with the next question."
+      },
+      "Body_import_deck": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "A PDF, TXT or MD file."
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_deck"
+      },
+      "DeckDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The deck's id, used in other addresses."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Shown to the user; the uploaded file's name without its extension."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bank",
+              "generated",
+              "ai"
+            ],
+            "title": "Kind",
+            "description": "\"bank\": questions found in a test collection; \"generated\": made offline from notes; \"ai\": made by Claude (desktop app only)."
+          },
+          "created": {
+            "type": "string",
+            "title": "Created",
+            "description": "When it was imported, ISO 8601 server local time."
+          },
+          "questions": {
+            "type": "integer",
+            "title": "Questions",
+            "description": "Number of questions."
+          },
+          "progress": {
+            "$ref": "#/components/schemas/Progress"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionOut"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Every question in the deck, in order."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "created",
+          "questions",
+          "progress",
+          "items"
+        ],
+        "title": "DeckDetail",
+        "description": "A deck with all its questions and answers.",
+        "examples": [
+          {
+            "created": "2026-11-20T14:05:31",
+            "id": "3f9c1a2b7d4e",
+            "kind": "bank",
+            "name": "Krok 1 2024",
+            "progress": {
+              "learned": 30,
+              "seen": 45,
+              "total": 120,
+              "weak": 6
+            },
+            "questions": 120
+          }
+        ]
+      },
+      "DeckOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The deck's id, used in other addresses."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Shown to the user; the uploaded file's name without its extension."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bank",
+              "generated",
+              "ai"
+            ],
+            "title": "Kind",
+            "description": "\"bank\": questions found in a test collection; \"generated\": made offline from notes; \"ai\": made by Claude (desktop app only)."
+          },
+          "created": {
+            "type": "string",
+            "title": "Created",
+            "description": "When it was imported, ISO 8601 server local time."
+          },
+          "questions": {
+            "type": "integer",
+            "title": "Questions",
+            "description": "Number of questions."
+          },
+          "progress": {
+            "$ref": "#/components/schemas/Progress"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "created",
+          "questions",
+          "progress"
+        ],
+        "title": "DeckOut",
+        "description": "A deck in the list: its name and progress, without the questions.",
+        "examples": [
+          {
+            "created": "2026-11-20T14:05:31",
+            "id": "3f9c1a2b7d4e",
+            "kind": "bank",
+            "name": "Krok 1 2024",
+            "progress": {
+              "learned": 30,
+              "seen": 45,
+              "total": 120,
+              "weak": 6
+            },
+            "questions": 120
+          }
+        ]
+      },
+      "ErrorOut": {
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Detail",
+            "description": "What went wrong. A sentence for FlasH's own errors; for a malformed request, FastAPI's list of the fields that are wrong.",
+            "examples": [
+              "Deck not found"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorOut",
+        "description": "Returned with every 4xx response."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status",
+            "description": "Always \"ok\" when the API can answer."
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "FlasH's version.",
+            "examples": [
+              "0.1.0"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "HealthOut",
+        "description": "The API is up."
+      },
+      "OpenQuestion": {
+        "properties": {
+          "number": {
+            "type": "integer",
+            "title": "Number",
+            "description": "Its place in the test, from 1."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "The question."
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options",
+            "description": "Answer options in the order shown; answer with their index."
+          }
+        },
+        "type": "object",
+        "required": [
+          "number",
+          "text",
+          "options"
+        ],
+        "title": "OpenQuestion",
+        "description": "The question waiting for an answer. The correct answer is not included."
+      },
+      "Progress": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Questions in the deck.",
+            "examples": [
+              120
+            ]
+          },
+          "seen": {
+            "type": "integer",
+            "title": "Seen",
+            "description": "Questions answered at least once.",
+            "examples": [
+              45
+            ]
+          },
+          "learned": {
+            "type": "integer",
+            "title": "Learned",
+            "description": "Questions answered right at least twice in a row.",
+            "examples": [
+              30
+            ]
+          },
+          "weak": {
+            "type": "integer",
+            "title": "Weak",
+            "description": "Questions whose last answer was wrong.",
+            "examples": [
+              6
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "seen",
+          "learned",
+          "weak"
+        ],
+        "title": "Progress",
+        "description": "How far the user is with a deck."
+      },
+      "QuestionOut": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "The question."
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options",
+            "description": "Answer options, in the stored order."
+          },
+          "answer": {
+            "type": "integer",
+            "title": "Answer",
+            "description": "Index of the correct option in ``options``."
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "description": "Why the answer is right, when known.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "options",
+          "answer"
+        ],
+        "title": "QuestionOut",
+        "description": "One question with its correct answer."
+      },
+      "TestRequest": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "smart",
+              "random",
+              "ordered",
+              "mistakes",
+              "unseen"
+            ],
+            "title": "Mode",
+            "description": "\"smart\": weak and new questions first; \"random\"; \"ordered\": as in the file; \"mistakes\": only questions last answered wrong; \"unseen\": only questions never answered.",
+            "default": "smart"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count",
+            "description": "How many questions; all of them when empty."
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Start",
+            "description": "First question number to pick from (1-based, inclusive).",
+            "default": 1
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End",
+            "description": "Last question number to pick from; the last one when empty."
+          },
+          "shuffle_options": {
+            "type": "boolean",
+            "title": "Shuffle Options",
+            "description": "Show the answer options in a random order.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "TestRequest",
+        "description": "Which questions to ask. Every field is optional.",
+        "examples": [
+          {
+            "count": 30,
+            "mode": "smart",
+            "shuffle_options": true
+          }
+        ]
+      },
+      "TestState": {
+        "properties": {
+          "test_id": {
+            "type": "string",
+            "title": "Test Id",
+            "description": "The test's id, used to answer."
+          },
+          "deck_id": {
+            "type": "string",
+            "title": "Deck Id",
+            "description": "The deck the questions come from."
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Questions in this test."
+          },
+          "answered": {
+            "type": "integer",
+            "title": "Answered",
+            "description": "Questions answered so far."
+          },
+          "score": {
+            "type": "integer",
+            "title": "Score",
+            "description": "Right answers so far."
+          },
+          "finished": {
+            "type": "boolean",
+            "title": "Finished",
+            "description": "True when every question is answered."
+          },
+          "question": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpenQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The next question, or null when the test is finished."
+          }
+        },
+        "type": "object",
+        "required": [
+          "test_id",
+          "deck_id",
+          "total",
+          "answered",
+          "score",
+          "finished",
+          "question"
+        ],
+        "title": "TestState",
+        "description": "Where a test is: the score so far and the next question.",
+        "examples": [
+          {
+            "answered": 1,
+            "deck_id": "3f9c1a2b7d4e",
+            "finished": false,
+            "question": {
+              "number": 2,
+              "options": [
+                "Oxygen",
+                "Carbon dioxide",
+                "Nitrogen",
+                "Helium"
+              ],
+              "text": "Which gas do plants absorb?"
+            },
+            "score": 1,
+            "test_id": "9a7c2e0f4b1d4c8e9f3a6b5d2c1e0f7a",
+            "total": 30
+          }
+        ]
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "health",
+      "description": "Is the API up?"
+    },
+    {
+      "name": "decks",
+      "description": "Import files as decks of questions, list and delete them."
+    },
+    {
+      "name": "tests",
+      "description": "Take a test on a deck, one question at a time."
+    }
+  ]
+}
