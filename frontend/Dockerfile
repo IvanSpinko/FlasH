@@ -2,7 +2,7 @@
 # Usually started together with the API: see compose.yaml in the project root.
 
 # 1. Build the app into static files (dist/).
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-fund --no-audit
