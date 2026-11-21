@@ -24,10 +24,11 @@ jobs:
         with:
           python-version: "3.13"
 
-      # Pinned so a new ruff release can't start failing CI on its own.
+      # The version pinned in requirements-dev.txt, so a new ruff release can't start failing CI on its own.
       - name: Install ruff
-        run: python -m pip install ruff==0.17.6
+        run: python -m pip install "$(grep -E '^ruff==' requirements-dev.txt | cut -d' ' -f1)"
 
+      # Bugs, and a docstring on every public function (pyproject.toml).
       - name: Run ruff
         run: ruff check --output-format=github .
 
@@ -36,6 +37,13 @@ jobs:
         if: ${{ !cancelled() }} # run even if the lint step failed, to show both results
         run: ruff format --check --diff .
 
+      - name: Check the server scripts
+        if: ${{ !cancelled() }}
+        run: |
+          command -v shellcheck >/dev/null || { sudo apt-get update -q && sudo apt-get install -yq shellcheck; }
+          shellcheck deploy/*.sh
+
+  # Unit, integration and end-to-end tests of the app itself (tests/).
   test:
     name: ${{ matrix.os }} · Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
@@ -48,6 +56,10 @@ jobs:
           # Oldest Python the app supports (README: 3.10+).
           - os: ubuntu-latest
             python: "3.10"
+    env:
+      # Windows and macOS runners have a screen, so the desktop window test must run there.
+      # Linux runners don't; there it is skipped.
+      FLASH_E2E_DESKTOP: ${{ matrix.os != 'ubuntu-latest' && '1' || '' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -61,11 +73,11 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       # The AI tests use a fake Claude client, so no API key is needed.
-      - name: Run unit tests
+      # The web API tests are skipped here: these jobs don't install its packages.
+      - name: Run the tests
         run: python -m unittest discover -s tests -t . -v
 
-  # The web API (flash/api) and its Docker image. The desktop jobs above
-  # don't install the API libraries, so there the API tests are skipped.
+  # The web API (flash/api) with the exact versions of its Docker image, and the image itself.
   api:
     name: Web API + Docker
     runs-on: ubuntu-latest
@@ -79,18 +91,24 @@ jobs:
           cache-dependency-path: requirements*.txt
 
       - name: Install dependencies
-        run: python -m pip install -r requirements-api.txt httpx
+        run: python -m pip install -r requirements-api-lock.txt -r requirements-dev.txt
 
-      - name: Run API tests
-        run: python -m unittest tests.test_api -v
+      # Every test, including the API ones, the real-server one and the docs/openapi.json check.
+      - name: Run the tests and measure coverage
+        run: |
+          python -m coverage run -m unittest discover -s tests -t . -v
+          python -m coverage report
 
       - name: Build the Docker image
         run: docker build -t flash-api .
 
-      - name: Start a container and check /health
+      - name: Start a container and wait until it is healthy
         run: |
           docker run -d --name flash-api -p 8000:8000 flash-api
-          for _ in $(seq 1 30); do curl -sf localhost:8000/health && exit 0; sleep 1; done
+          for _ in $(seq 1 30); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' flash-api)" = healthy ] && curl -sf localhost:8000/health && exit 0
+            sleep 1
+          done
           docker logs flash-api
           exit 1
 
@@ -117,15 +135,40 @@ jobs:
       - name: Type-check and build
         run: npm run build
 
+      # Components with a mocked API (Vitest).
+      - name: Unit and component tests
+        run: npm test
+
       - name: Start the API and the web app with Docker Compose
         working-directory: .
         run: docker compose up -d --build --wait
 
-      - name: Check the app, and the API through it
+      - name: Install the browser for end-to-end tests
+        run: npx playwright install --with-deps chromium
+
+      # A real browser, phone- and desktop-sized, against the running containers.
+      - name: End-to-end tests (Playwright)
+        run: npx playwright test
+
+      - name: Check the production config (HTTPS + password)
         working-directory: .
+        env:
+          FLASH_DOMAIN: flash.example.com
+          FLASH_USER: ci
+          FLASH_PASSWORD_HASH: "$2a$14$abcdefghijklmnopqrstuuJ5dQ0Xz9eZ8n1o2p3q4r5s6t7u8v9w0"
         run: |
-          curl -sf localhost:8080/ | grep -q '<div id="root">'
-          curl -sf localhost:8080/api/health
+          docker compose -f compose.yaml -f compose.prod.yaml config --quiet
+          docker run --rm -e FLASH_DOMAIN -e FLASH_USER -e FLASH_PASSWORD_HASH \
+            -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10-alpine \
+            caddy validate --config /etc/caddy/Caddyfile
+
+      - name: Keep the browser traces if a test failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-traces
+          path: frontend/test-results/
+          retention-days: 7
 
       - name: Show container logs if something failed
         if: failure()
