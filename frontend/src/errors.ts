@@ -6,7 +6,9 @@ export function errorText(t: T, err: unknown, action: "upload" | "start" | "othe
   if (!(err instanceof ApiError)) return t("err_generic", { message: String(err) });
   if (err.status === 0) return t("err_unreachable");
   if (action === "upload") {
+    if (err.status === 413) return t("err_tooBig");
     if (err.status === 415) return t("err_unsupported");
+    if (err.message.startsWith("Could not read")) return t("err_unreadable");
     if (err.message.startsWith("No text")) return t("err_noText");
     if (err.message.startsWith("Not a test bank")) return t("err_notBank");
     if (err.message.startsWith("No questions")) return t("err_noQuestions");
