@@ -87,10 +87,19 @@ flash/
     theme.py          light/dark palettes and ttk styling
     i18n.py           UA/EN strings
   api/              optional web API (FastAPI) used by the web app
-    app.py
+    app.py            the routes
+    schemas.py        request and response shapes (documented in OpenAPI)
+    sessions.py       open tests, limited in number and idle time
+    config.py         limits from environment variables
+    openapi.py        writes docs/openapi.json
 frontend/           optional web app (React): runs in any browser, including phones
+  src/                screens, API client, translations, and their tests (*.test.tsx)
+  e2e/                browser tests (Playwright)
 compose.yaml        starts the web API and the web app together
-tests/              unit tests: py -m unittest discover -s tests -t .
+compose.prod.yaml   adds HTTPS and a site password for a public server
+deploy/             Caddyfile, update and backup scripts for the server
+tests/              unit/, integration/ and e2e/ tests, with shared fakes
+docs/               architecture, deployment, API and testing guides; openapi.json
 ```
 
 ## Web version (optional)
@@ -113,3 +122,23 @@ docker run -p 8000:8000 -v flash-data:/data flash-api
 ```
 
 This first version has no user accounts (everyone using the server shares the same decks), keeps running tests in memory, and doesn't offer AI generation.
+
+To put it online with HTTPS and a password, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The API is described in [docs/API.md](docs/API.md) and in OpenAPI form at `/api/docs`.
+
+## Development
+
+```bash
+pip install -r requirements-dev.txt               # the app, the API, and the test and lint tools
+python -m unittest discover -s tests -t .         # all Python tests
+ruff check . && ruff format .                     # lint (bugs + docstrings) and format
+cd frontend && npm install && npm test            # web app tests
+```
+
+What each kind of test covers, and how to run the browser tests, is in [docs/TESTING.md](docs/TESTING.md). Every public function has a docstring; `ruff check` fails if a new one doesn't.
+
+| Guide | What it covers |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the parts fit together, with diagrams |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | putting the web version on a server (AWS Lightsail), updates, backups |
+| [docs/API.md](docs/API.md) | the web API, with examples; full reference in `docs/openapi.json` |
+| [docs/TESTING.md](docs/TESTING.md) | unit, integration and end-to-end tests, fakes and mocks, CI |

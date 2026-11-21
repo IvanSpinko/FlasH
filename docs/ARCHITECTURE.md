@@ -44,7 +44,7 @@ flowchart TB
     data[("Data folder · FLASH_DATA_DIR<br/>desktop: ~/FlasH or %APPDATA%\FlasH<br/>Docker: /data, in the volume flash-data")]
 
     user -- "opens the window" --> desktop
-    phone -. "opens http://server:8080" .-> web
+    phone -. "https://your-domain<br/>(on a server: Caddy adds HTTPS + a password)" .-> web
     web -. "/api/... (HTTP + JSON)" .-> api
     desktop -- "direct calls, in-process: works offline" --> service
     api -- "the same calls, inside Docker" --> service
@@ -71,6 +71,8 @@ Solid arrows are calls inside one program. Dashed arrows go over the network or 
 | `flash/desktop` | the Tkinter app, one module per screen | yes | no |
 | `flash/api` | the optional web API | HTTP only | no |
 | `frontend/` | the optional web app (React), in its own container | yes | no, only talks to the API |
+
+How the web version runs on a public server (Caddy, the password, backups) is in [DEPLOYMENT.md](DEPLOYMENT.md); the API itself is in [API.md](API.md).
 
 ## What happens when you import a file
 
@@ -109,10 +111,10 @@ flowchart LR
     push["git push<br/>or a pull request"] -- "starts" --> tests
 
     subgraph tests["Tests · tests.yml · jobs run at the same time"]
-        lint["Lint<br/>ruff check · ruff format --check"]
-        matrix["Tests × 4<br/>Windows · macOS · Ubuntu with Python 3.13<br/>Ubuntu with Python 3.10"]
-        apijob["Web API + Docker<br/>API tests · docker build · /health"]
-        webjob["Web app + Compose<br/>type-check · build · both containers start"]
+        lint["Lint<br/>ruff: bugs + docstrings<br/>formatting · shellcheck"]
+        matrix["Tests × 4<br/>unit · integration · e2e<br/>Windows · macOS · Ubuntu, Python 3.13 and 3.10<br/>desktop window on Windows and macOS"]
+        apijob["Web API + Docker<br/>all tests with the exact versions<br/>coverage ≥ 90% · openapi.json up to date<br/>image builds and turns healthy"]
+        webjob["Web app + Compose<br/>type-check · build · Vitest<br/>both containers · Playwright in a browser<br/>production config valid"]
     end
 
     tag["git tag v0.2.0<br/>git push origin v0.2.0"] -- "starts" --> build
@@ -121,8 +123,16 @@ flowchart LR
         build["build.bat<br/>Python 3.13 · PyInstaller"] --> check["Check output<br/>FlasH.exe and zip exist"] --> artifact["Artifact<br/>zip kept on the run"] --> gh["GitHub Release<br/>FlasH-Windows.zip"]
     end
 
+    button["Actions → Deploy<br/>Run workflow"] -- "starts" --> deploy
+
+    subgraph deployflow["Deploy · deploy.yml · by hand"]
+        deploy["SSH to the server<br/>deploy/update.sh"] --> health["Site answers<br/>/api/health"]
+    end
+
     classDef hub fill:#ebe9fe,stroke:#4f46e5,stroke-width:2px,color:#1b1f2a
-    class gh hub
+    class gh,health hub
 ```
 
-A branch push that changes `build.bat`, `requirements.txt`, `run_flash.py` or `packaging/` runs the same Windows build but stops at the artifact. Only a `v*` tag publishes a release.
+A branch push that changes `build.bat`, `requirements.txt`, `run_flash.py` or `packaging/` runs the same Windows build but stops at the artifact. Only a `v*` tag publishes a release. Deploying is always started by hand, and only works once the server and its secrets are set up ([DEPLOYMENT.md](DEPLOYMENT.md#7-updating)). Dependabot opens pull requests for new dependency versions every week; the tests above check each one.
+
+What each kind of test covers is in [TESTING.md](TESTING.md).
