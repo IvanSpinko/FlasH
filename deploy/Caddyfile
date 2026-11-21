@@ -1,0 +1,23 @@
+# HTTPS and a password in front of the FlasH web app. Used by compose.prod.yaml.
+# Caddy gets and renews a free Let's Encrypt certificate for FLASH_DOMAIN by itself;
+# the domain's DNS must point to this server and ports 80 and 443 must be open.
+# The values come from .env (see .env.example).
+
+{$FLASH_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		# Browsers remember to use HTTPS only.
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	# There are no user accounts yet, so the whole site sits behind one password.
+	# /api/health stays open for uptime monitors; it shows nothing private.
+	@private not path /api/health
+	basic_auth @private {
+		{$FLASH_USER} {$FLASH_PASSWORD_HASH}
+	}
+
+	reverse_proxy web:80
+}

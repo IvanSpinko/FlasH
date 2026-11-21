@@ -11,3 +11,7 @@ samples
 *.pdf
 tests
 frontend
+.env
+deploy
+docs
+node_modules
