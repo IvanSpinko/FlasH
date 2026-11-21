@@ -2,5 +2,5 @@
 #   pip install -r requirements-dev.txt
 -r requirements-api.txt
 httpx==0.28.1     # FastAPI's TestClient, for tests/integration/test_api.py
-coverage==7.13.0  # how much of the code the tests run
+coverage==7.17.3  # how much of the code the tests run
 ruff==0.17.6      # lint and format; CI installs this same version
