@@ -3,7 +3,7 @@
 #   docker run -p 8000:8000 -v flash-data:/data flash-api
 # Then open http://localhost:8000/docs
 # Usually started together with the web app: see compose.yaml and docs/DEPLOYMENT.md.
-FROM python:3.13-slim
+FROM python:3.15-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
