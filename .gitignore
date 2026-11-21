@@ -14,3 +14,7 @@ node_modules/
 
 # Test coverage data
 .coverage
+
+# Browser test output (frontend)
+test-results/
+playwright-report/
