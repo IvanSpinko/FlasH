@@ -141,6 +141,8 @@ def generate_questions(
         try:
             data = json.loads(payload)
         except json.JSONDecodeError:
+            if progress:
+                progress(i + 1, len(chunks))
             continue
         for item in data.get("questions", []):
             opts = [o.strip() for o in item.get("options", []) if o.strip()]
