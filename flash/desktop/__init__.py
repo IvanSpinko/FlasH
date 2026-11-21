@@ -12,6 +12,14 @@ view is rebuilt when the theme changes. All logic goes through
 - theme, i18n: colours and UI text (Ukrainian/English)
 """
 
-from .app import main
-
 __all__ = ["main"]
+
+
+def main() -> None:
+    """Start the desktop app and wait until its window is closed.
+
+    Tk is imported only here, so parts like ``i18n`` can be used where Tk isn't installed.
+    """
+    from .app import main as run
+
+    run()
